@@ -38,7 +38,7 @@ struct StartPomodoro {
     duration: i8
 }
 
-/// Finish an active Pomodoro
+/// Finish the active Pomodoro
 #[derive(Clap)]
 struct FinishPomodoro {
 }
@@ -74,7 +74,7 @@ struct StartBreak {
     duration: i8
 }
 
-/// Finish an active Break
+/// Finish the active Break
 #[derive(Clap)]
 struct FinishBreak {
 }
@@ -95,7 +95,7 @@ fn main() {
                 println!("Cancelling the active Pomodoro");
               }
               PomodoroCommands::Finish(_) => {
-                println!("Finishing an active Pomodoro");
+                println!("Finishing the active Pomodoro");
               }
             }
         }
@@ -105,7 +105,7 @@ fn main() {
                 println!("Starting a new break that will last for {} minutes", start_options.duration);
               }
               BreakCommands::Finish(_) => {
-                println!("Finishing an active Break");
+                println!("Finishing the active Break");
               }
             }
         }
