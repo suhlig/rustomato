@@ -25,6 +25,8 @@ struct Pomodoro {
 #[derive(Clap)]
 enum PomodoroCommands {
     Start(StartPomodoro),
+    Interrupt(InterruptPomodoro),
+    Cancel(CancelPomodoro),
     Finish(FinishPomodoro),
 }
 
@@ -39,6 +41,16 @@ struct StartPomodoro {
 /// Finish an active Pomodoro
 #[derive(Clap)]
 struct FinishPomodoro {
+}
+
+/// Interrupt the active Pomodoro
+#[derive(Clap)]
+struct InterruptPomodoro {
+}
+
+/// Cancel the active Pomodoro
+#[derive(Clap)]
+struct CancelPomodoro {
 }
 
 /// Work with a break
@@ -75,6 +87,12 @@ fn main() {
             match pomodoro_options.subcmd {
               PomodoroCommands::Start(start_options) => {
                 println!("Starting a new Pomodoro that will last for {} minutes", start_options.duration);
+              }
+              PomodoroCommands::Interrupt(_) => {
+                println!("Marking the active Pomodoro as interrupted");
+              }
+              PomodoroCommands::Cancel(_) => {
+                println!("Cancelling the active Pomodoro");
               }
               PomodoroCommands::Finish(_) => {
                 println!("Finishing an active Pomodoro");
