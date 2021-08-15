@@ -1,56 +1,45 @@
-use clap::{crate_version,crate_authors,AppSettings, Clap};
-
-/// Pomodoro timer
-#[derive(Clap)]
-#[clap(version = crate_version!(), author = crate_authors!())]
-#[clap(setting = AppSettings::ColoredHelp)]
-struct Opts {
-    #[clap(short, long, parse(from_occurrences))]
-    verbose: i32,
-
-    #[clap(subcommand)]
-    subcmd: SubCommands,
-}
-
-#[derive(Clap)]
-enum SubCommands {
-    Pomodoro(Pomodoro),
-    Break(Break),
-}
-
-/// Work with a pomodoro
-#[derive(Clap)]
-struct Pomodoro {
-}
-
-/// Work with a break
-#[derive(Clap)]
-struct Break {
-    /// Print debug info
-    #[clap(short, long)]
-    debug: bool
-}
+use clap::{crate_authors, crate_version, App, AppSettings};
 
 fn main() {
-    let opts: Opts = Opts::parse();
+  let matches = App::new("rustomato")
+    .about("Simple Pomodoro timer")
+    .version(crate_version!())
+    .author(crate_authors!())
+    .license("MIT")
+    .setting(AppSettings::ColoredHelp)
+    .subcommand(
+      App::new("pomodoro")
+        .about("Work with Pomodori")
+        .subcommand(
+          App::new("start")
+            .about("starts a new Pomodoro")
+        )
+        .subcommand(App::new("finish").about("finishes an active Pomodoro")),
+    )
+    .subcommand(
+      App::new("break")
+        .about("Work with breaks")
+        .subcommand(
+          App::new("start")
+            .about("starts a new break")
+        )
+        .subcommand(App::new("finish").about("finishes a break")),
+    )
+    .get_matches();
 
-    match opts.verbose {
-        0 => { /* nothing printed */ },
-        1 => println!("Some verbose info"),
-        2 => println!("Tons of verbose info"),
-        _ => println!("That's verbose enough"),
-    }
-
-    match opts.subcmd {
-        SubCommands::Pomodoro(_) => {
-            println!("Let's do something with a Pomodoro");
+  match matches.subcommand() {
+    Some(("pomodoro", pomodoro_matches)) => {
+      match pomodoro_matches.subcommand() {
+        Some(("start", _)) => {
+          println!("Starting a new Pomodoro");
         }
-        SubCommands::Break(t) => {
-            if t.debug {
-                println!("Printing debug info...");
-            }
-
-            println!("Let's do something with a break");
+        Some(("stop", _)) => {
+          println!("Stopping the active Pomodoro");
         }
+        _ => unreachable!(),
+      }
     }
+    None => println!("No subcommand was used"), // If no subcommand was used it'll match the tuple ("", None)
+    _ => unreachable!(), // If all subcommands are defined above, anything else is unreachabe!()
+  }
 }
