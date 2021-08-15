@@ -1,8 +1,8 @@
-use clap::{AppSettings, Clap};
+use clap::{crate_version,crate_authors,AppSettings, Clap};
 
 /// Pomodoro timer
 #[derive(Clap)]
-#[clap(version = "0.0.1", author = "Steffen Uhlig <steffen@familie-uhlig.net>")]
+#[clap(version = crate_version!(), author = crate_authors!())]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
     #[clap(short, long, parse(from_occurrences))]
