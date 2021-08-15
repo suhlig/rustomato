@@ -35,7 +35,7 @@ enum PomodoroCommands {
 struct StartPomodoro {
     /// How many minutes this Pomodoro should last
     #[clap(short, long, required(false), default_value("25"), takes_value(true), value_name("DURATION"))]
-    duration: i8
+    duration: u8
 }
 
 /// Finishes the active Pomodoro
@@ -71,7 +71,7 @@ enum BreakCommands {
 struct StartBreak {
     /// How many minutes this break should last
     #[clap(short, long, required(false), default_value("5"), takes_value(true), value_name("DURATION"))]
-    duration: i8
+    duration: u8
 }
 
 /// Finishes the active Break
