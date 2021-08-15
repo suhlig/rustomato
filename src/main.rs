@@ -30,7 +30,7 @@ enum PomodoroCommands {
     Finish(FinishPomodoro),
 }
 
-/// Start a Pomodoro
+/// Starts a Pomodoro
 #[derive(Clap)]
 struct StartPomodoro {
     /// How many minutes this Pomodoro should last
@@ -38,17 +38,17 @@ struct StartPomodoro {
     duration: i8
 }
 
-/// Finish the active Pomodoro
+/// Finishes the active Pomodoro
 #[derive(Clap)]
 struct FinishPomodoro {
 }
 
-/// Interrupt the active Pomodoro
+/// Marks the active Pomodoro as interrupted
 #[derive(Clap)]
 struct InterruptPomodoro {
 }
 
-/// Cancel the active Pomodoro
+/// Cancels the active Pomodoro
 #[derive(Clap)]
 struct CancelPomodoro {
 }
@@ -66,7 +66,7 @@ enum BreakCommands {
     Finish(FinishBreak),
 }
 
-/// Start a Break
+/// Starts a break
 #[derive(Clap)]
 struct StartBreak {
     /// How many minutes this break should last
@@ -74,7 +74,7 @@ struct StartBreak {
     duration: i8
 }
 
-/// Finish the active Break
+/// Finishes the active Break
 #[derive(Clap)]
 struct FinishBreak {
 }
