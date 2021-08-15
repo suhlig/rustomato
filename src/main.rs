@@ -1,4 +1,12 @@
 use clap::{crate_version,AppSettings, Clap};
+use std::{
+    process,
+    thread,
+    time::Duration,
+    time::Instant,
+};
+use std::sync::mpsc::channel;
+use std::sync::mpsc::TryRecvError;
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
@@ -103,9 +111,51 @@ fn main() {
             match break_options.subcmd {
               BreakCommands::Start(start_options) => {
                 println!("Starting a new break that will last for {} minutes", start_options.duration);
+
+                let (tx, rx) = channel();
+                let (result_tx, result_rx) = channel();
+
+                ctrlc::set_handler(move || tx.send(()).expect("Could not send signal on channel.")).expect("Error setting Ctrl-C handler");
+
+                let t = thread::spawn({ move || {
+                        let mut done = false;
+                        let start = Instant::now();
+
+                        // TODO This is ugly
+                        let dur:u64 = start_options.duration.into();
+                        let break_duration = Duration::new(60*dur, 0);
+
+                        while !done {
+                            if start.elapsed() > break_duration {
+                              done = true;
+                              result_tx.send(false).expect("could not send result");
+                            }
+
+                            match rx.try_recv() {
+                              Ok(_) => { done = true; result_tx.send(true).expect("could not send result") }
+                              Err(TryRecvError::Disconnected) => { println!("Error: channel disconnected"); done = true; }
+                              Err(TryRecvError::Empty) => { thread::sleep(Duration::from_millis(25)) }
+                            }
+                        }
+                    }
+                });
+                t.join().unwrap();
+
+                match result_rx.recv() {
+                  Ok(cancelled) => {
+                    if cancelled {
+                      println!("Break was cancelled");
+                      process::exit(1);
+                    } else {
+                      println!("Finished the break");
+                      process::exit(0);
+                    }
+                  }
+                  Err(_) => { println!("Error: not sure what happened") }
+                }
               }
               BreakCommands::Finish(_) => {
-                println!("Finishing the active Break");
+                println!("Finishing the active break");
               }
             }
         }
