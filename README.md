@@ -5,6 +5,10 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 # Usage
 
 * `rustomato break start` blocks until the time for a break is over. If the command is interrupted with Control-C (`SIGINT`), the break is finished immediately.
+* Until we have hooks, here is how to use notifications:
+  ```command
+  $ rustomato break start -d 1 && terminal-notifier -message "Break is over" -title rustomato || terminal-notifier -message "Break cancelled" -title rustomato
+  ```
 
 # Notes
 
