@@ -1,8 +1,8 @@
 mod rustomato;
 
 use clap::{crate_version, AppSettings, Clap};
+use rustomato::{Break, Pomodoro};
 use std::process;
-use rustomato::{Pomodoro, Break};
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
@@ -30,8 +30,7 @@ struct PomodoroCommand {
 enum PomodoroCommands {
     Start(StartPomodoro),
     Interrupt(InterruptPomodoro),
-    Cancel(CancelPomodoro),
-    Finish(FinishPomodoro),
+    Annotate(AnnotatePomodoro),
 }
 
 /// Starts a Pomodoro
@@ -57,9 +56,9 @@ struct FinishPomodoro {}
 #[derive(Clap)]
 struct InterruptPomodoro {}
 
-/// Cancels the active Pomodoro
+/// Annotates a Pomodoro
 #[derive(Clap)]
-struct CancelPomodoro {}
+struct AnnotatePomodoro {}
 
 /// Work with a break
 #[derive(Clap)]
@@ -71,7 +70,6 @@ struct BreakCommand {
 #[derive(Clap)]
 enum BreakCommands {
     Start(StartBreak),
-    Finish(FinishBreak),
 }
 
 /// Starts a break
@@ -117,11 +115,8 @@ fn main() {
             PomodoroCommands::Interrupt(_) => {
                 println!("TODO Marking the active Pomodoro as interrupted");
             }
-            PomodoroCommands::Cancel(_) => {
-                println!("TODO Cancelling the active Pomodoro");
-            }
-            PomodoroCommands::Finish(_) => {
-                println!("TODO Finishing the active Pomodoro");
+            PomodoroCommands::Annotate(_) => {
+                println!("TODO Annotating the active Pomodoro");
             }
         },
         SubCommands::Break(break_options) => match break_options.subcmd {
@@ -140,9 +135,6 @@ fn main() {
                     println!("\nBreak {} was cancelled", br3ak.uuid);
                     process::exit(1);
                 }
-            }
-            BreakCommands::Finish(_) => {
-                println!("Finishing the active break");
             }
         },
     }

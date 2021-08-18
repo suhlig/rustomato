@@ -4,10 +4,31 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 
 # Usage
 
-* `rustomato break start` blocks until the time for a break is over. If the command is interrupted with Control-C (`SIGINT`), the break is finished immediately.
+```command
+rustomato pomodoro [start]   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
+rustomato break              # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
+rustomato pomodoro annotate  # Annotates a¹ Pomodoro.
+rustomato pomodoro interrupt # Mark a¹ Pomodoro as interrupted.
+rustomato pomodoro log       # Log a previously finished pomodoro.
+```
+[1] the running, if there is one, or the most recently completed, or the given
+
+* `pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the Pomodoro or break is finished immediately.
 * Until we have hooks, here is how to use notifications:
   ```command
-  $ rustomato break start -d 1 && terminal-notifier -message "Break is over" -title rustomato || terminal-notifier -message "Break cancelled" -title rustomato
+  $ rustomato pomodoro start && terminal-notifier -message "Pomodoro is over" -title rustomato || terminal-notifier -message "Pomodoro cancelled" -title rustomato
+  ```
+
+  If you prefer tmux:
+
+  ```command
+  $ rustomato pomodoro start && tmux display-message "Pomodoro is over" || tmux display-message "Pomodoro cancelled"
+  ```
+
+  Or, on a Mac:
+
+  ```command
+  $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
   ```
 
 # Notes
