@@ -31,6 +31,14 @@ rustomato break [start]      # Starts a break. Auto-finishes the currently activ
   $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
   ```
 
+# Release a new version
+
+There is a GitHub action to compile and attach after running
+
+```command
+gh release create v0.0.2 --notes MVP
+```
+
 # Notes
 
 * Install and update rust with `rustup`
