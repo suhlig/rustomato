@@ -6,10 +6,10 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 
 ```command
 rustomato pomodoro [start]   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
-rustomato break              # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 rustomato pomodoro annotate  # Annotates a¹ Pomodoro.
 rustomato pomodoro interrupt # Mark a¹ Pomodoro as interrupted.
 rustomato pomodoro log       # Log a previously finished pomodoro.
+rustomato break [start]      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 ```
 [1] the running, if there is one, or the most recently completed, or the given
 

@@ -1,7 +1,7 @@
 mod rustomato;
 
 use clap::{crate_version, AppSettings, Clap};
-use rustomato::{Break, Pomodoro};
+use rustomato::{Schedulable, Status};
 use std::process;
 
 /// A simple Pomodoro timer for the command line
@@ -96,20 +96,31 @@ fn main() {
 
     match opts.subcmd {
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
-            PomodoroCommands::Start(start_options) => {
-                println!(
-                    "Starting a new Pomodoro that will last for {} minutes",
-                    start_options.duration
-                );
+            PomodoroCommands::Start(start_pomodoro_options) => {
+                let pom = Schedulable::new(start_pomodoro_options.duration.into());
 
-                let pom = Pomodoro::new(start_options.duration.into());
+                println!("Starting new Pomodoro {}", pom); // TODO Only if verbose
 
-                if pom.run() {
-                    println!("Finished the Pomodoro {}", pom.uuid);
-                    process::exit(0);
-                } else {
-                    println!("\nPomodoro {} was cancelled", pom.uuid);
-                    process::exit(1);
+                let result = rustomato::run(pom);
+
+                match result {
+                    Ok(completed_pom) => {
+                        println!("\nPomodoro {}", completed_pom); // TODO Only if verbose
+
+                        match completed_pom.status() {
+                            Status::Cancelled => {
+                                process::exit(1);
+                            }
+                            Status::Finished => {
+                                process::exit(0);
+                            }
+                            _ => (), // TODO Should not happen; panic?
+                        }
+                    }
+                    Err(err) => {
+                        println!("Failed to schedule Pomodoro: {}", err); // TODO Only if verbose
+                        process::exit(1);
+                    }
                 }
             }
             PomodoroCommands::Interrupt(_) => {
@@ -120,20 +131,22 @@ fn main() {
             }
         },
         SubCommands::Break(break_options) => match break_options.subcmd {
-            BreakCommands::Start(start_options) => {
-                println!(
-                    "Starting a new break that will last for {} minutes",
-                    start_options.duration
-                );
+            BreakCommands::Start(start_break_options) => {
+                let br3ak = Schedulable::new(start_break_options.duration.into());
 
-                let br3ak = Break::new(start_options.duration.into());
+                println!("Starting break {}", br3ak); // TODO Only if verbose
 
-                if br3ak.run() {
-                    println!("Finished the break {}", br3ak.uuid);
-                    process::exit(0);
-                } else {
-                    println!("\nBreak {} was cancelled", br3ak.uuid);
-                    process::exit(1);
+                let result = rustomato::run(br3ak);
+
+                match result {
+                    Ok(completed_break) => {
+                        println!("\nBreak {}", completed_break); // TODO Only if verbose
+                        process::exit(0);
+                    }
+                    Err(err) => {
+                        println!("Failed to schedule break: {}", err); // TODO Only if verbose
+                        process::exit(1);
+                    }
                 }
             }
         },
