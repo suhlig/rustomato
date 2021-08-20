@@ -30,15 +30,15 @@ impl Schedulable {
     }
 
     pub fn status(&self) -> Status {
-            if self.cancelled_at != 0 {
-                return Status::Cancelled;
+        if self.cancelled_at != 0 {
+            return Status::Cancelled;
+        } else {
+            if self.finished_at != 0 {
+                return Status::Finished;
             } else {
-                if self.finished_at != 0 {
-                    return Status::Finished;
-                } else {
-                    return Status::Active;
-                }
+                return Status::Active;
             }
+        }
     }
 }
 
@@ -57,15 +57,3 @@ impl fmt::Display for Schedulable {
         }
     }
 }
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum SchedulingError {
-    ExecutionError,
-}
-
-impl fmt::Display for SchedulingError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error executing schedulable")
-    }
-}
-

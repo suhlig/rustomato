@@ -1,5 +1,6 @@
-use super::{Schedulable, SchedulingError};
 use super::persistence::Repository;
+use super::Schedulable;
+use std::fmt;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
@@ -7,14 +8,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time::Duration, time::Instant};
 
 pub struct Scheduler {
-  repo: Repository
+  repo: Repository,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum SchedulingError {
+  ExecutionError,
+}
+
+impl fmt::Display for SchedulingError {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "Error executing schedulable")
+  }
 }
 
 impl Scheduler {
   pub fn new(repo: Repository) -> Self {
-    Self {
-      repo: repo
-    }
+    Self { repo: repo }
   }
 
   pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
