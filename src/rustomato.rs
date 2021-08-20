@@ -13,7 +13,6 @@ pub struct Schedulable {
 }
 
 pub enum Status {
-    New,
     Active,
     Cancelled,
     Finished,
@@ -31,9 +30,6 @@ impl Schedulable {
     }
 
     pub fn status(&self) -> Status {
-        if self.started_at == 0 {
-            return Status::New;
-        } else {
             if self.cancelled_at != 0 {
                 return Status::Cancelled;
             } else {
@@ -43,7 +39,6 @@ impl Schedulable {
                     return Status::Active;
                 }
             }
-        }
     }
 }
 
@@ -52,9 +47,6 @@ impl fmt::Display for Schedulable {
         match self.status() {
             Status::Active => {
                 write!(f, "{}; active since {}", self.uuid, self.started_at)
-            }
-            Status::New => {
-                write!(f, "{}; new", self.uuid)
             }
             Status::Cancelled => {
                 write!(f, "{}; cancelled at {}", self.uuid, self.cancelled_at)

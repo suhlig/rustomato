@@ -18,8 +18,6 @@ impl Scheduler {
   }
 
   pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
-    self.repo.save(&schedulable); // TODO Probably not needed if we start with an active object
-
     schedulable.started_at = now();
     self.repo.save(&schedulable);
 

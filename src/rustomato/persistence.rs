@@ -17,22 +17,9 @@ impl Repository {
 
     pub fn save(&self, s: &Schedulable) {
         match s.status() {
-            Status::New => {
-                self.db.execute(
-                    "INSERT INTO schedulables (uuid) VALUES (?1)",
-                    params![s.uuid.to_simple().to_string()],
-                )
-                .expect("Failed to insert schedulable");
-            }
             Status::Active => {
                 self.db.execute(
-                    "UPDATE
-                        schedulables
-                    SET
-                        started_at = strftime('%s','now')
-                    WHERE
-                        uuid == ?1
-                    ;" ,
+                    "INSERT INTO schedulables (uuid, started_at) VALUES (?1, strftime('%s','now'))",
                     params![s.uuid.to_simple().to_string()],
                 )
                 .expect("Failed to insert schedulable");

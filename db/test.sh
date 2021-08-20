@@ -5,10 +5,6 @@ IFS=$'\n\t'
 
 main(){
   reset
-  insert-new
-  show-new
-
-  reset
   insert-active
   show-active
 
@@ -21,23 +17,19 @@ main(){
   show-cancelled
 
   reset
-  new="$(insert-new)"
-  start "$new"
-  cancel "$new"
+  uuid="$(insert-active)"
+  cancel "$uuid"
   show-all
 
   reset
-  new="$(insert-new)"
-  start "$new"
-  finish "$new"
+  uuid="$(insert-active)"
+  finish "$uuid"
   show-all
 
   reset
-  new1="$(insert-new)"
-  start "$new1"
-  # finish "$new1"
-  new2="$(insert-new)"
-  start "$new2" # should fail unless $new1 wasn't finished yet
+  uuid="$(insert-active)"
+  # finish "$uuid"
+  insert-active # should fail unless $uuid was finished
   show-all
 }
 
@@ -45,17 +37,12 @@ reset() {
   database < db/schema.sql
 }
 
-insert-new() {
-  header "${FUNCNAME[0]}"
-  uuid=$(generate-uuid)
-  echo "INSERT INTO schedulables (uuid) VALUES ('$uuid');" | database
-  >&2 echo "Inserted $uuid"
-  echo "$uuid"
-}
-
 insert-active() {
   header "${FUNCNAME[0]}"
-  echo "INSERT INTO schedulables (uuid, started_at) VALUES ('$(generate-uuid)', strftime('%s','now'));" | database
+  uuid=$(generate-uuid)
+  echo "INSERT INTO schedulables (uuid, started_at) VALUES ('$uuid', strftime('%s','now'));" | database
+  >&2 echo "Inserted $uuid"
+  echo "$uuid"
 }
 
 insert-finished() {
@@ -132,11 +119,6 @@ show-all() {
         FROM
           schedulables
         ;" | database
-}
-
-show-new() {
-  header "${FUNCNAME[0]}"
-  echo "SELECT * from new;" | database
 }
 
 show-active() {

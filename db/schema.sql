@@ -2,18 +2,16 @@ DROP TABLE IF EXISTS schedulables;
 
 CREATE TABLE schedulables (
   uuid            TEXT NOT NULL PRIMARY KEY,
-  started_at      INTEGER,
+  started_at      INTEGER NOT NULL,
   finished_at     INTEGER,
   cancelled_at    INTEGER,
   CHECK (
-         -- new
-             (started_at IS NULL AND finished_at IS NULL AND cancelled_at IS NULL)
          -- active
-         OR  (started_at IS NOT NULL AND finished_at IS NULL AND cancelled_at IS NULL)
+             (finished_at IS NULL AND cancelled_at IS NULL)
          -- finished
-         OR  (started_at IS NOT NULL AND finished_at IS NOT NULL AND cancelled_at IS NULL)
+         OR  (finished_at IS NOT NULL AND cancelled_at IS NULL)
          -- cancelled
-         OR  (started_at IS NOT NULL AND finished_at IS NULL AND cancelled_at IS NOT NULL)
+         OR  (finished_at IS NULL AND cancelled_at IS NOT NULL)
         )
 );
 
@@ -28,18 +26,6 @@ WHERE
     finished_at IS NULL
   AND
     cancelled_at IS NULL
-;
-
-DROP VIEW IF EXISTS new;
-CREATE VIEW
-  new
-AS
-  SELECT
-    uuid
-  FROM
-    schedulables
-  WHERE
-    started_at IS NULL AND finished_at IS NULL AND cancelled_at IS NULL
 ;
 
 DROP VIEW IF EXISTS active;
