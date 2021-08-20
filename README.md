@@ -44,30 +44,4 @@ gh release create v0.0.2 --notes MVP
 * Install and update rust with `rustup`
 * Run: `cargo run -- pomodoro`
 * Build a release: `cargo build --release` (binary found in `target/release/`)
-
-# WIP Persistence
-
-```command
-$ sqlite3 ~/.rustomato.sqlite3
-```
-
-```sql
-CREATE TABLE schedulables (
-  uuid            TEXT NOT NULL,
-  started_at      INTEGER,
-  finished_at     INTEGER,
-  cancelled_at    INTEGER
-);
-
--- TODO Can we set up a constraint to have either finished_at or cancelled_at as zero?
-
-INSERT INTO schedulables (uuid, started_at) VALUES ("3de9cc4b-f731-4c3d-9c93-1700c932f218", 1629318386);
-
-SELECT
-  *,
-  datetime(started_at, 'unixepoch', 'localtime') as started_at_datetime,
-  datetime(finished_at, 'unixepoch', 'localtime') as finished_at_datetime,
-  datetime(cancelled_at, 'unixepoch', 'localtime') as cancelled_at_datetime
-FROM
-  schedulables
-;
+* `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
