@@ -1,7 +1,10 @@
 mod rustomato;
 
 use clap::{crate_version, AppSettings, Clap};
+use rustomato::persistence::Repository;
+use rustomato::scheduling::Scheduler;
 use rustomato::{Schedulable, Status};
+use std::path::Path;
 use std::process;
 
 /// A simple Pomodoro timer for the command line
@@ -92,16 +95,20 @@ struct StartBreak {
 struct FinishBreak {}
 
 fn main() {
-    let opts: Opts = Opts::parse();
+    let home = dirs::home_dir().expect("Unable to find home directory");
+    let home_home = home.to_str().expect("Unable to convert to string");
+    let location = Path::new(home_home).join(".rustomato.sqlite3");
 
-    match opts.subcmd {
+    let repo = Repository::new(&location);
+    let scheduler = Scheduler::new(repo);
+
+    match Opts::parse().subcmd {
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(start_pomodoro_options) => {
                 let pom = Schedulable::new(start_pomodoro_options.duration.into());
-
                 println!("Starting new Pomodoro {}", pom); // TODO Only if verbose
 
-                let result = rustomato::run(pom);
+                let result = scheduler.run(pom);
 
                 match result {
                     Ok(completed_pom) => {
@@ -136,7 +143,7 @@ fn main() {
 
                 println!("Starting break {}", br3ak); // TODO Only if verbose
 
-                let result = rustomato::run(br3ak);
+                let result = scheduler.run(br3ak);
 
                 match result {
                     Ok(completed_break) => {
