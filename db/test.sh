@@ -40,7 +40,7 @@ reset() {
 insert-active() {
   header "${FUNCNAME[0]}"
   uuid=$(generate-uuid)
-  echo "INSERT INTO schedulables (uuid, started_at) VALUES ('$uuid', strftime('%s','now'));" | database
+  echo "INSERT INTO schedulables (uuid, duration, started_at) VALUES ('$uuid', 25, strftime('%s','now'));" | database
   >&2 echo "Inserted $uuid"
   echo "$uuid"
 }
@@ -49,11 +49,13 @@ insert-finished() {
   header "${FUNCNAME[0]}"
   echo "INSERT INTO schedulables (
             uuid,
+            duration,
             started_at,
             finished_at
         )
         VALUES (
            '$(generate-uuid)',
+           25,
            strftime('%s', datetime('now','-$((RANDOM % 30 + 1)) minutes')),
            strftime('%s', 'now')
         );" | database
@@ -63,11 +65,13 @@ insert-cancelled() {
   header "${FUNCNAME[0]}"
   echo "INSERT INTO schedulables (
             uuid,
+            duration,
             started_at,
             cancelled_at
         )
         VALUES (
            '$(generate-uuid)',
+           25,
            strftime('%s', datetime('now','-$((RANDOM % 30 + 1)) minutes')),
            strftime('%s', 'now')
         );" | database
@@ -112,6 +116,7 @@ cancel() {
 show-all() {
   header "${FUNCNAME[0]}"
   echo "SELECT
+          kind,
           uuid,
           datetime(started_at, 'unixepoch', 'localtime') as started_at,
           datetime(finished_at, 'unixepoch', 'localtime') as finished_at,

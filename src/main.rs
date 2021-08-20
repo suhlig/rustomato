@@ -3,7 +3,7 @@ mod rustomato;
 use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::Scheduler;
-use rustomato::{Schedulable, Status};
+use rustomato::{Schedulable, Status, Kind};
 use std::path::Path;
 use std::process;
 
@@ -95,6 +95,7 @@ struct StartBreak {
 struct FinishBreak {}
 
 fn main() {
+    // TODO This is ugly
     let home = dirs::home_dir().expect("Unable to find home directory");
     let home_home = home.to_str().expect("Unable to convert to string");
     let location = Path::new(home_home).join(".rustomato.sqlite3");
@@ -105,14 +106,14 @@ fn main() {
     match Opts::parse().subcmd {
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(start_pomodoro_options) => {
-                let pom = Schedulable::new(start_pomodoro_options.duration.into());
-                println!("Starting new Pomodoro {}", pom); // TODO Only if verbose
+                let pom = Schedulable::new(Kind::Pomodoro, start_pomodoro_options.duration.into());
+                println!("Starting new {}", pom); // TODO Only if verbose
 
                 let result = scheduler.run(pom);
 
                 match result {
                     Ok(completed_pom) => {
-                        println!("\nPomodoro {}", completed_pom); // TODO Only if verbose
+                        println!("\n{}", completed_pom); // TODO Only if verbose
 
                         match completed_pom.status() {
                             Status::Cancelled => {
@@ -125,7 +126,7 @@ fn main() {
                         }
                     }
                     Err(err) => {
-                        println!("Failed to schedule Pomodoro: {}", err); // TODO Only if verbose
+                        println!("Failed to schedule {}", err); // TODO Only if verbose
                         process::exit(1);
                     }
                 }
@@ -139,19 +140,19 @@ fn main() {
         },
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(start_break_options) => {
-                let br3ak = Schedulable::new(start_break_options.duration.into());
+                let br3ak = Schedulable::new(Kind::Break, start_break_options.duration.into());
 
-                println!("Starting break {}", br3ak); // TODO Only if verbose
+                println!("Starting {}", br3ak); // TODO Only if verbose
 
                 let result = scheduler.run(br3ak);
 
                 match result {
                     Ok(completed_break) => {
-                        println!("\nBreak {}", completed_break); // TODO Only if verbose
+                        println!("\n{}", completed_break); // TODO Only if verbose
                         process::exit(0);
                     }
                     Err(err) => {
-                        println!("Failed to schedule break: {}", err); // TODO Only if verbose
+                        println!("Failed to schedule: {}", err); // TODO Only if verbose
                         process::exit(1);
                     }
                 }
