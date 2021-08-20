@@ -46,6 +46,5 @@ gh release create v0.0.2 --notes MVP
 * Build a release: `cargo build --release` (binary found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * TODO Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
-* TODO Split Pomodoro and Break; breaks cannot have annotations or interrupts. Also, for reports we need to know what it was.
 * TODO Annotations table, joined onto Pomodori
 * TODO Interrupts table, joined onto Pomodori
