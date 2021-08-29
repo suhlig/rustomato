@@ -1,11 +1,11 @@
 mod rustomato;
 
+use std::{env,process};
+use std::path::*;
 use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::Scheduler;
-use rustomato::{Schedulable, Status, Kind};
-use std::path::Path;
-use std::process;
+use rustomato::{Kind, Schedulable, Status};
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
@@ -95,19 +95,27 @@ struct StartBreak {
 struct FinishBreak {}
 
 fn main() {
-    // TODO This is ugly
-    let home = dirs::home_dir().expect("Unable to find home directory");
-    let home_home = home.to_str().expect("Unable to convert to string");
-    let location = Path::new(home_home).join(".rustomato.sqlite3");
+    let location = match env::var("DATABASE_URL") {
+        Ok(val) => PathBuf::from(val),
+        Err(_) => {
+            let mut home = dirs::home_dir().expect("Unable to resolve home directory");
+            home.push(".rustomato.db");
+            home.to_path_buf()
+        }
+    };
+
+    println!("Using database {:?}", location); // TODO Only if verbose
 
     let repo = Repository::new(&location);
     let scheduler = Scheduler::new(repo);
+    let pid = process::id();
 
     match Opts::parse().subcmd {
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(start_pomodoro_options) => {
-                let pom = Schedulable::new(Kind::Pomodoro, start_pomodoro_options.duration.into());
-                println!("Starting new {}", pom); // TODO Only if verbose
+                let pom =
+                    Schedulable::new(pid, Kind::Pomodoro, start_pomodoro_options.duration.into());
+                println!("Starting {}", pom); // TODO Only if verbose
 
                 let result = scheduler.run(pom);
 
@@ -126,21 +134,21 @@ fn main() {
                         }
                     }
                     Err(err) => {
-                        println!("Failed to schedule {}", err); // TODO Only if verbose
+                        eprintln!("Failed to schedule Pomodoro; {}", err);
                         process::exit(1);
                     }
                 }
             }
             PomodoroCommands::Interrupt(_) => {
-                println!("TODO Marking the active Pomodoro as interrupted");
+                eprintln!("TODO Marking the active Pomodoro as interrupted");
             }
             PomodoroCommands::Annotate(_) => {
-                println!("TODO Annotating the active Pomodoro");
+                eprintln!("TODO Annotating the active Pomodoro");
             }
         },
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(start_break_options) => {
-                let br3ak = Schedulable::new(Kind::Break, start_break_options.duration.into());
+                let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
 
                 println!("Starting {}", br3ak); // TODO Only if verbose
 
@@ -152,7 +160,7 @@ fn main() {
                         process::exit(0);
                     }
                     Err(err) => {
-                        println!("Failed to schedule: {}", err); // TODO Only if verbose
+                        eprintln!("Failed to schedule break; {}", err);
                         process::exit(1);
                     }
                 }

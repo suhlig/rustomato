@@ -11,7 +11,14 @@ pub enum Kind {
     Break,
 }
 
+// Neither Pomodoro nor Break
+#[derive(Debug)]
+pub struct UnknownKind {
+    offender: String
+}
+
 pub struct Schedulable {
+    pid: u32,
     kind: Kind,
     uuid: Uuid,
     duration: u64,
@@ -26,9 +33,20 @@ pub enum Status {
     Finished,
 }
 
+impl Kind {
+    pub fn from(str: String) -> Result<Self, UnknownKind> {
+        match str.to_lowercase().as_str() {
+            "pomodoro" => Ok(Kind::Pomodoro),
+            "break" => Ok(Kind::Break),
+            _ => Err(UnknownKind{offender: str}),
+        }
+    }
+}
+
 impl Schedulable {
-    pub fn new(kind: Kind, duration: u64) -> Self {
+    pub fn new(pid: u32, kind: Kind, duration: u64) -> Self {
         Self {
+            pid: pid,
             kind: kind,
             uuid: Uuid::new_v4(),
             duration: duration,
@@ -55,12 +73,19 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Pomodoro => {
-                write!(f, "Pomodoro")
+                write!(f, "pomodoro")
             }
             Kind::Break => {
-                write!(f, "Break")
+                write!(f, "break")
             }
         }
+    }
+}
+
+impl std::fmt::Debug for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         f.debug_struct("Kind")
+         .finish()
     }
 }
 
@@ -80,21 +105,21 @@ impl fmt::Display for Schedulable {
                 write!(
                     f,
                     "{} {}; active since {}",
-                    self.kind, self.uuid, self.started_at
+                    self.kind, self.uuid, self.started_at // TODO print prettier timestamp
                 )
             }
             Status::Cancelled => {
                 write!(
                     f,
                     "{} {}; cancelled at {}",
-                    self.kind, self.uuid, self.cancelled_at
+                    self.kind, self.uuid, self.cancelled_at // TODO print prettier timestamp
                 )
             }
             Status::Finished => {
                 write!(
                     f,
                     "{} {}; finished at {}",
-                    self.kind, self.uuid, self.finished_at
+                    self.kind, self.uuid, self.finished_at // TODO print prettier timestamp
                 )
             }
         }

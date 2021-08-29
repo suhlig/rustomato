@@ -1,4 +1,4 @@
-use super::persistence::Repository;
+use super::persistence::{Repository, PersistenceError};
 use super::Schedulable;
 use std::fmt;
 use std::sync::mpsc::channel;
@@ -14,11 +14,15 @@ pub struct Scheduler {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum SchedulingError {
   ExecutionError,
+  AlreadyRunning,
 }
 
 impl fmt::Display for SchedulingError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "Error executing schedulable")
+    match self {
+      SchedulingError::ExecutionError => write!(f, "cannot execute schedulable"),
+      SchedulingError::AlreadyRunning => write!(f, "another pomodoro or break is already running"),
+    }
   }
 }
 
@@ -29,7 +33,17 @@ impl Scheduler {
 
   pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
     schedulable.started_at = now();
-    self.repo.save(&schedulable);
+
+    let mut schedulable = match self.repo.save(&schedulable) {
+      Ok(v) => v,
+      Err(e) => {
+
+        match e {
+          PersistenceError::AlreadyRunning => return Err(SchedulingError::AlreadyRunning),
+          _ => return Err(SchedulingError::ExecutionError)
+        }
+      }
+    };
 
     match waiter(schedulable.duration).recv() {
       Ok(cancelled) => {
@@ -39,7 +53,9 @@ impl Scheduler {
           schedulable.finished_at = now();
         }
 
-        self.repo.save(&schedulable);
+        // Handle save error more detailed
+        self.repo.save(&schedulable).expect("Unable to persist");
+
         return Ok(schedulable);
       }
       Err(_) => {

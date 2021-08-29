@@ -3,10 +3,12 @@ DROP TABLE IF EXISTS schedulables;
 CREATE TABLE schedulables (
   uuid            TEXT NOT NULL PRIMARY KEY,
   kind            TEXT NOT NULL DEFAULT 'pomodoro',
+  pid             INTEGER,
   duration        INTEGER,
   started_at      INTEGER NOT NULL,
   finished_at     INTEGER,
   cancelled_at    INTEGER,
+  CHECK ( pid >= 0 ),
   CHECK ( kind == 'pomodoro' OR kind == 'break' ),
   CHECK (
          -- active
@@ -18,9 +20,23 @@ CREATE TABLE schedulables (
         )
 );
 
--- At any given time, only one schedulable may be in active state
+-- Only one row may have a non-NULL pid
+DROP TRIGGER IF EXISTS singularity_pid;
+CREATE TRIGGER
+  singularity_pid
+BEFORE INSERT ON
+  schedulables
+BEGIN
+  SELECT CASE WHEN
+    (SELECT COUNT(*) FROM schedulables WHERE PID IS NOT NULL) > 0
+  THEN
+    RAISE(FAIL, "Cannot have two PIDs running at the same time")
+  END;
+END;
+
+-- Only one schedulable may be in active state
 CREATE UNIQUE INDEX
-  singularity
+  singularity_state
 ON
   schedulables(started_at)
 WHERE
@@ -38,6 +54,7 @@ AS
   SELECT
     kind,
     uuid,
+    pid,
     started_at
   FROM
     schedulables
@@ -82,6 +99,7 @@ AS
   SELECT
     kind,
     uuid,
+    pid,
     duration,
     datetime(started_at, 'unixepoch', 'localtime') as started_at,
     datetime(finished_at, 'unixepoch', 'localtime') as finished_at,

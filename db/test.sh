@@ -28,9 +28,12 @@ main(){
 
   reset
   uuid="$(insert-active)"
-  # finish "$uuid"
-  insert-active # should fail unless $uuid was finished
+  finish "$uuid"
+  insert-active # must fail if $uuid was not finished yet
   show-all
+
+  reset
+  insert-two-pids # should fail
 }
 
 reset() {
@@ -40,9 +43,17 @@ reset() {
 insert-active() {
   header "${FUNCNAME[0]}"
   uuid=$(generate-uuid)
-  echo "INSERT INTO schedulables (uuid, duration, started_at) VALUES ('$uuid', 25, strftime('%s','now'));" | database
+  echo "INSERT INTO schedulables (pid, uuid, duration, started_at) VALUES ($RANDOM,'$uuid', 25, strftime('%s','now'));" | database
   >&2 echo "Inserted $uuid"
   echo "$uuid"
+}
+
+insert-two-pids() {
+  header "${FUNCNAME[0]}"
+  uuid=$(generate-uuid)
+  echo "INSERT INTO schedulables (pid, uuid, duration, started_at) VALUES ($RANDOM,'$uuid', 25, strftime('%s','now'));" | database
+  uuid=$(generate-uuid)
+  echo "INSERT INTO schedulables (pid, uuid, duration, started_at) VALUES ($RANDOM,'$uuid', 25, strftime('%s','now'));" | database
 }
 
 insert-finished() {
@@ -116,6 +127,7 @@ cancel() {
 show-all() {
   header "${FUNCNAME[0]}"
   echo "SELECT
+          pid,
           kind,
           uuid,
           datetime(started_at, 'unixepoch', 'localtime') as started_at,
@@ -142,7 +154,7 @@ show-cancelled() {
 }
 
 database() {
-  sqlite3 -header -separator ' | ' ~/.rustomato.sqlite3
+  sqlite3 -header -separator ' | ' ~/.rustomato.db
 }
 
 header() {

@@ -16,7 +16,7 @@ rustomato break [start]      # Starts a break. Auto-finishes the currently activ
 * `pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the Pomodoro or break is finished immediately.
 * Until we have hooks, here is how to use notifications:
   ```command
-  $ rustomato pomodoro start && terminal-notifier -message "Pomodoro is over" -title rustomato || terminal-notifier -message "Pomodoro cancelled" -title rustomato
+  $ rustomato pomodoro start && terminal-notifier -message "Pomodoro is over" -title rustomato -sound glass -group rustomato || terminal-notifier -message "Pomodoro cancelled" -title rustomato -sound glass -group rustomato
   ```
 
   If you prefer tmux:
@@ -43,6 +43,8 @@ gh release create v0.0.2 --notes MVP
 
 * Install and update rust with `rustup`
 * Run: `cargo run -- pomodoro`
+* Load the database schema with `sqlite3 ~/.rustomato.db < db/schema.sql`
+  - TODO Make this a proper migration; embedded into the binary
 * Build a release: `cargo build --release` (binary found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * TODO Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
