@@ -47,6 +47,8 @@ gh release create v0.0.2 --notes MVP
   - TODO Make this a proper migration; embedded into the binary
 * Build a release: `cargo build --release` (binary found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
+* TODO Show progress bar when running attached to a terminal
+* TODO Not sure if we need the views (beyond `db/test.sh`)
 * TODO Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
 * TODO Annotations table, joined onto Pomodori
 * TODO Interrupts table, joined onto Pomodori

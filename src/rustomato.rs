@@ -1,4 +1,5 @@
 use rusqlite::types::{ToSql, ToSqlOutput};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::Result;
 use std::fmt;
 use uuid::Uuid;
@@ -17,10 +18,44 @@ pub struct UnknownKind {
     offender: String
 }
 
+#[derive(Clone, Copy)]
+pub struct SqlUuid(Uuid);
+
+impl SqlUuid {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    pub fn to_string(&self) -> String {
+        self.0.to_simple().to_string()
+    }
+}
+
+impl FromSql for SqlUuid {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value {
+            ValueRef::Text(s) => {
+                let s = std::str::from_utf8(s).map_err(|e| FromSqlError::Other(Box::new(e)))?;
+                match Uuid::parse_str(s) {
+                    Ok(val) => Ok(SqlUuid(val)),
+                    Err(e) => Err(FromSqlError::Other(Box::new(e)))
+                }
+            }
+            _ => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl fmt::Display for SqlUuid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 pub struct Schedulable {
     pid: u32,
     kind: Kind,
-    uuid: Uuid,
+    uuid: SqlUuid,
     duration: u64,
     started_at: u64,
     finished_at: u64,
@@ -48,7 +83,7 @@ impl Schedulable {
         Self {
             pid: pid,
             kind: kind,
-            uuid: Uuid::new_v4(),
+            uuid: SqlUuid::new(),
             duration: duration,
             started_at: 0,
             finished_at: 0,

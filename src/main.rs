@@ -1,11 +1,11 @@
 mod rustomato;
 
-use std::{env,process};
-use std::path::*;
 use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
-use rustomato::scheduling::Scheduler;
+use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
+use std::path::*;
+use std::{env, process};
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
@@ -88,6 +88,10 @@ struct StartBreak {
         value_name("DURATION")
     )]
     duration: u8,
+
+    /// Cancel whatever may currently be running before starting the break
+    #[clap(short, long)]
+    force: bool,
 }
 
 /// Finishes the active Break
@@ -115,11 +119,10 @@ fn main() {
             PomodoroCommands::Start(start_pomodoro_options) => {
                 let pom =
                     Schedulable::new(pid, Kind::Pomodoro, start_pomodoro_options.duration.into());
-                println!("Starting {}", pom); // TODO Only if verbose
 
-                let result = scheduler.run(pom);
+                println!("Starting Pomodoro"); // TODO Only if verbose
 
-                match result {
+                match scheduler.run(pom) {
                     Ok(completed_pom) => {
                         println!("\n{}", completed_pom); // TODO Only if verbose
 
@@ -134,7 +137,10 @@ fn main() {
                         }
                     }
                     Err(err) => {
-                        eprintln!("Failed to schedule Pomodoro; {}", err);
+                        match err {
+                            SchedulingError::AlreadyRunning(pid) => eprintln!("Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.", err, pid),
+                            _ => eprintln!("Error: {}.", err),
+                        }
                         process::exit(1);
                     }
                 }
@@ -150,17 +156,18 @@ fn main() {
             BreakCommands::Start(start_break_options) => {
                 let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
 
-                println!("Starting {}", br3ak); // TODO Only if verbose
+                println!("Starting break"); // TODO Only if verbose
 
-                let result = scheduler.run(br3ak);
-
-                match result {
+                match scheduler.run(br3ak) {
                     Ok(completed_break) => {
                         println!("\n{}", completed_break); // TODO Only if verbose
                         process::exit(0);
                     }
                     Err(err) => {
-                        eprintln!("Failed to schedule break; {}", err);
+                        match err {
+                            SchedulingError::AlreadyRunning(pid) => eprintln!("Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.", err, pid),
+                            _ => eprintln!("Error: {}.", err),
+                        }
                         process::exit(1);
                     }
                 }
@@ -168,3 +175,5 @@ fn main() {
         },
     }
 }
+
+// eprintln!("Error: {}. Use --force to overwrite the stale entry (TODO check for pid {}).", err, pid)

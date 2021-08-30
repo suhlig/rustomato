@@ -1,30 +1,30 @@
-use super::{Kind, Schedulable, Status};
+use super::{Kind, Schedulable, SqlUuid, Status};
+use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::{params, Connection};
-use std::path::PathBuf;
 use std::fmt;
-use uuid::Uuid;
+use std::path::PathBuf;
 
 pub struct Repository {
     db: Connection,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum PersistenceError {
     CannotSave,
     CannotUpdate,
     CannotFind,
-    AlreadyRunning,
+    AlreadyRunning(u32),
 }
 
 impl fmt::Display for PersistenceError {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-        PersistenceError::CannotSave => write!(f, "Cannot save"),
-        PersistenceError::CannotUpdate => write!(f, "Cannot update"),
-        PersistenceError::CannotFind => write!(f, "Cannot find"),
-        PersistenceError::AlreadyRunning => write!(f, "Already running"),
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PersistenceError::CannotSave => write!(f, "Cannot save"),
+            PersistenceError::CannotUpdate => write!(f, "Cannot update"),
+            PersistenceError::CannotFind => write!(f, "Cannot find"),
+            PersistenceError::AlreadyRunning(pid) => write!(f, "Already running as {}", pid),
+        }
     }
-  }
 }
 
 impl Repository {
@@ -34,25 +34,23 @@ impl Repository {
         }
     }
 
-    pub fn has_running(&self) -> Result<bool, PersistenceError> {
-        let result: u64 = self
-            .db
-            .query_row(
-                "SELECT count(*) as active from active where pid IS NOT NULL",
-                [],
-                |row| row.get(0),
-            )
-            .expect("Unable to query for active schedulables");
-
-        return match result {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => Err(PersistenceError::AlreadyRunning),
-        };
+    pub fn active(&self) -> Result<Option<Schedulable>, PersistenceError> {
+        match self.db.query_row(
+            "SELECT uuid from schedulables where pid IS NOT NULL",
+            [],
+            |row| row.get(0).into(), // TODO Do we need the into?
+        ) {
+            Ok(val) => match self.find_by_uuid(val) {
+                Ok(schedulable) => Ok(Some(schedulable)),
+                Err(e) => Err(e),
+            },
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(_) => Err(PersistenceError::CannotFind),
+        }
     }
 
-    pub fn find_by_uuid(&self, uuid: Uuid) -> Result<Schedulable, PersistenceError> {
-        let uuid_s = uuid.to_simple().to_string();
+    pub fn find_by_uuid(&self, uuid: SqlUuid) -> Result<Schedulable, PersistenceError> {
+        let uuid_s = uuid.to_string();
 
         return match self.db.query_row(
             "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at from schedulables where uuid=?1",
@@ -81,7 +79,7 @@ impl Repository {
     }
 
     pub fn save(&self, s: &Schedulable) -> Result<Schedulable, PersistenceError> {
-        let uuid = s.uuid.to_simple().to_string();
+        let uuid = s.uuid.to_string();
 
         match s.status() {
             Status::Active => {
@@ -93,10 +91,14 @@ impl Repository {
                         return Ok(self.find_by_uuid(s.uuid).expect("Could not find the inserted"))
                     },
                     Err(_) => {
-                        if self.has_running()? {
-                            return Err(PersistenceError::AlreadyRunning);
-                        } else {
-                            return Err(PersistenceError::CannotSave);
+                        match self.active() {
+                            Ok(option) => {
+                                match option {
+                                    Some(existing) => return Err(PersistenceError::AlreadyRunning(existing.pid)),
+                                    None => return Err(PersistenceError::CannotSave),
+                                };
+                            },
+                            Err(_) => panic!(""),
                         }
                     }
                 }

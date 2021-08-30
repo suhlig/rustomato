@@ -14,14 +14,14 @@ pub struct Scheduler {
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum SchedulingError {
   ExecutionError,
-  AlreadyRunning,
+  AlreadyRunning(u32),
 }
 
 impl fmt::Display for SchedulingError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       SchedulingError::ExecutionError => write!(f, "cannot execute schedulable"),
-      SchedulingError::AlreadyRunning => write!(f, "another pomodoro or break is already running"),
+      SchedulingError::AlreadyRunning(_) => write!(f, "another pomodoro or break is already running"),
     }
   }
 }
@@ -37,9 +37,8 @@ impl Scheduler {
     let mut schedulable = match self.repo.save(&schedulable) {
       Ok(v) => v,
       Err(e) => {
-
         match e {
-          PersistenceError::AlreadyRunning => return Err(SchedulingError::AlreadyRunning),
+          PersistenceError::AlreadyRunning(pid) => return Err(SchedulingError::AlreadyRunning(pid)),
           _ => return Err(SchedulingError::ExecutionError)
         }
       }
@@ -47,6 +46,7 @@ impl Scheduler {
 
     match waiter(schedulable.duration).recv() {
       Ok(cancelled) => {
+        // TODO If it's a break, just finish it.
         if cancelled {
           schedulable.cancelled_at = now();
         } else {
@@ -97,7 +97,9 @@ fn waiter(duration: u64) -> Receiver<bool> {
             println!("Error: channel disconnected");
             done = true;
           }
-          Err(TryRecvError::Empty) => thread::sleep(Duration::from_millis(25)),
+          Err(TryRecvError::Empty) => {
+            thread::sleep(Duration::from_millis(25))
+          },
         }
       }
     }
