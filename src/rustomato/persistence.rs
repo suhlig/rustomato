@@ -82,6 +82,7 @@ impl Repository {
         let uuid = s.uuid.to_string();
 
         match s.status() {
+            Status::New => {Err(PersistenceError::CannotSave)},
             Status::Active => {
                 match self.db.execute(
                     "INSERT INTO schedulables (pid, kind, uuid, duration, started_at) VALUES (?1, ?2, ?3, ?4, strftime('%s','now'))",

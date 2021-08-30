@@ -56,13 +56,14 @@ pub struct Schedulable {
     pid: u32,
     kind: Kind,
     uuid: SqlUuid,
-    duration: u64,
+    duration: u64, // TODO Use duration with a unit
     started_at: u64,
     finished_at: u64,
     cancelled_at: u64,
 }
 
 pub enum Status {
+    New,
     Active,
     Cancelled,
     Finished,
@@ -98,7 +99,11 @@ impl Schedulable {
             if self.finished_at != 0 {
                 return Status::Finished;
             } else {
-                return Status::Active;
+                if self.started_at != 0 {
+                    return Status::Active;
+                } else{
+                    return Status::New;
+                }
             }
         }
     }
@@ -135,10 +140,18 @@ impl ToSql for Kind {
 impl fmt::Display for Schedulable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.status() {
+            Status::New => {
+                write!(
+                    f,
+                    "{} ({} min)",
+                    self.kind,
+                    self.duration,
+                )
+            }
             Status::Active => {
                 write!(
                     f,
-                    "{} {}; active since {}",
+                    "{} {} active since {}",
                     self.kind,
                     self.uuid,
                     self.started_at // TODO print prettier timestamp
@@ -147,7 +160,7 @@ impl fmt::Display for Schedulable {
             Status::Cancelled => {
                 write!(
                     f,
-                    "{} {}; cancelled at {}",
+                    "{} {} cancelled at {}",
                     self.kind,
                     self.uuid,
                     self.cancelled_at // TODO print prettier timestamp
@@ -156,7 +169,7 @@ impl fmt::Display for Schedulable {
             Status::Finished => {
                 write!(
                     f,
-                    "{} {}; finished at {}",
+                    "{} {} finished at {}",
                     self.kind,
                     self.uuid,
                     self.finished_at // TODO print prettier timestamp

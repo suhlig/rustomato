@@ -12,3 +12,4 @@ ctrlc = "3.0"
 uuid = { version = "0.8", features = ["v4"] }
 rusqlite = "0.25.3"
 dirs = "3.0.2"
+pbr = "1.0.3"

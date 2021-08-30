@@ -1,5 +1,6 @@
 use super::persistence::{PersistenceError, Repository};
 use super::Schedulable;
+use pbr::ProgressBar;
 use std::fmt;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
@@ -78,6 +79,15 @@ fn waiter(duration: u64) -> Receiver<bool> {
     })
     .expect("Error setting Ctrl-C handler");
 
+    // TODO Only if attached to a terminal
+    let mut pb = ProgressBar::new(60 * duration);
+    // pb.show_bar = true;
+    pb.show_speed = false;
+    // pb.show_percent = true;
+    pb.show_counter = false;
+    pb.show_time_left = false;
+    pb.show_tick = false;
+
     thread::spawn({
         move || {
             let mut done = false;
@@ -90,6 +100,8 @@ fn waiter(duration: u64) -> Receiver<bool> {
                     result_tx.send(false).expect("could not send result");
                 }
 
+                pb.set(start.elapsed().as_secs());
+
                 match control_rx.try_recv() {
                     Ok(_) => {
                         done = true;
@@ -99,7 +111,10 @@ fn waiter(duration: u64) -> Receiver<bool> {
                         println!("Error: channel disconnected");
                         done = true;
                     }
-                    Err(TryRecvError::Empty) => thread::sleep(Duration::from_millis(25)),
+                    Err(TryRecvError::Empty) => {
+                        thread::sleep(Duration::from_millis(25));
+                        pb.tick();
+                    }
                 }
             }
         }

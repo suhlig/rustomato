@@ -121,7 +121,7 @@ fn main() {
                 let pom =
                     Schedulable::new(pid, Kind::Pomodoro, start_pomodoro_options.duration.into());
 
-                println!("Starting Pomodoro"); // TODO Only if verbose
+                println!("Starting {}", pom); // TODO Only if verbose
 
                 match scheduler.run(pom) {
                     Ok(completed_pom) => {
@@ -157,7 +157,7 @@ fn main() {
             BreakCommands::Start(start_break_options) => {
                 let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
 
-                println!("Starting break"); // TODO Only if verbose
+                println!("Starting {}", br3ak); // TODO Only if verbose
 
                 match scheduler.run(br3ak) {
                     Ok(completed_break) => {
