@@ -1,5 +1,5 @@
-use rusqlite::types::{ToSql, ToSqlOutput};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
+use rusqlite::types::{ToSql, ToSqlOutput};
 use rusqlite::Result;
 use std::fmt;
 use uuid::Uuid;
@@ -15,7 +15,7 @@ pub enum Kind {
 // Neither Pomodoro nor Break
 #[derive(Debug)]
 pub struct UnknownKind {
-    offender: String
+    offender: String,
 }
 
 #[derive(Clone, Copy)]
@@ -38,7 +38,7 @@ impl FromSql for SqlUuid {
                 let s = std::str::from_utf8(s).map_err(|e| FromSqlError::Other(Box::new(e)))?;
                 match Uuid::parse_str(s) {
                     Ok(val) => Ok(SqlUuid(val)),
-                    Err(e) => Err(FromSqlError::Other(Box::new(e)))
+                    Err(e) => Err(FromSqlError::Other(Box::new(e))),
                 }
             }
             _ => Err(FromSqlError::InvalidType),
@@ -73,7 +73,7 @@ impl Kind {
         match str.to_lowercase().as_str() {
             "pomodoro" => Ok(Kind::Pomodoro),
             "break" => Ok(Kind::Break),
-            _ => Err(UnknownKind{offender: str}),
+            _ => Err(UnknownKind { offender: str }),
         }
     }
 }
@@ -119,8 +119,7 @@ impl fmt::Display for Kind {
 
 impl std::fmt::Debug for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-         f.debug_struct("Kind")
-         .finish()
+        f.debug_struct("Kind").finish()
     }
 }
 
@@ -140,21 +139,27 @@ impl fmt::Display for Schedulable {
                 write!(
                     f,
                     "{} {}; active since {}",
-                    self.kind, self.uuid, self.started_at // TODO print prettier timestamp
+                    self.kind,
+                    self.uuid,
+                    self.started_at // TODO print prettier timestamp
                 )
             }
             Status::Cancelled => {
                 write!(
                     f,
                     "{} {}; cancelled at {}",
-                    self.kind, self.uuid, self.cancelled_at // TODO print prettier timestamp
+                    self.kind,
+                    self.uuid,
+                    self.cancelled_at // TODO print prettier timestamp
                 )
             }
             Status::Finished => {
                 write!(
                     f,
                     "{} {}; finished at {}",
-                    self.kind, self.uuid, self.finished_at // TODO print prettier timestamp
+                    self.kind,
+                    self.uuid,
+                    self.finished_at // TODO print prettier timestamp
                 )
             }
         }
