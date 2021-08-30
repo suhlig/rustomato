@@ -33,10 +33,10 @@ rustomato break [start]      # Starts a break. Auto-finishes the currently activ
 
 # Release a new version
 
-There is a GitHub action to compile and attach after running
+There is a GitHub action that compiles the code, creates a new release and attaches the binaries:
 
 ```command
-gh release create v0.0.2 --notes MVP
+$ gh release create v0.0.3 --notes 'Enforce singularity (per `DATABASE_URL`)'
 ```
 
 # Notes
@@ -44,8 +44,8 @@ gh release create v0.0.2 --notes MVP
 * Install and update rust with `rustup`
 * Run: `cargo run -- pomodoro`
 * Load the database schema with `sqlite3 ~/.rustomato.db < db/schema.sql`
-  - TODO Make this a proper migration; embedded into the binary
-* Build a release: `cargo build --release` (binary found in `target/release/`)
+  - TODO Make this a proper migration; embedded into the binary (e.g. using [Refinery](https://github.com/rust-db/refinery))
+* Build a release manually with `cargo build --release` (binary will be found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * TODO Show progress bar when running attached to a terminal
 * TODO Not sure if we need the views (beyond `db/test.sh`)

@@ -99,6 +99,7 @@ struct StartBreak {
 struct FinishBreak {}
 
 fn main() {
+    // TODO Use Clap's `env` option
     let location = match env::var("DATABASE_URL") {
         Ok(val) => PathBuf::from(val),
         Err(_) => {
