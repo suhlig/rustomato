@@ -124,7 +124,7 @@ impl Repository {
                         params![uuid],
                     ){
                     Ok(_) => {
-                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the updated"))
+                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the cancelled"))
                     },
                     Err(_) => {return Err(PersistenceError::CannotUpdate)}
                 }
@@ -135,7 +135,7 @@ impl Repository {
                         params![uuid],
                     ){
                     Ok(_) => {
-                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the updated"))
+                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the finished"))
                     },
                     Err(_) => {return Err(PersistenceError::CannotUpdate)}
                 }
