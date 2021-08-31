@@ -1,0 +1,13 @@
+[package]
+name = "rustomato"
+version = "0.0.6"
+authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
+edition = "2018"
+
+[dependencies]
+ctrlc = "3.0"
+uuid = { version = "0.8", features = ["v4"] }
+rusqlite = "~0.25.0"
+pbr = "1.0.3"
+refinery = { version = "0.6", features = ["rusqlite"]}
+url = "2.2.2"

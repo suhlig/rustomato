@@ -1,10 +1,8 @@
-pub mod rustomato;
-
-use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
 use std::path::*;
+use clap::{crate_version, AppSettings, Clap};
 use std::{env, process};
 use url::Url;
 
@@ -195,5 +193,3 @@ fn main() {
         },
     }
 }
-
-// eprintln!("Error: {}. Use --force to overwrite the stale entry (TODO check for pid {}).", err, pid)
