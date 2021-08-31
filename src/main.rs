@@ -22,7 +22,7 @@ enum SubCommands {
     Break(BreakCommand),
 }
 
-/// Work with a pomodoro
+/// Work with a Pomodoro
 #[derive(Clap)]
 struct PomodoroCommand {
     #[clap(subcommand)]

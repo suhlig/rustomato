@@ -47,7 +47,7 @@ $ gh release create v0.0.3 --notes 'Enforce singularity (per `DATABASE_URL`)'
   - TODO Make this a proper migration; embedded into the binary (e.g. using [Refinery](https://github.com/rust-db/refinery))
 * Build a release manually with `cargo build --release` (binary will be found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
-* TODO Show progress bar when running attached to a terminal
+* TODO Show progress bar only when attached to a terminal
 * TODO Not sure if we need the views (beyond `db/test.sh`)
 * TODO Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
 * TODO Annotations table, joined onto Pomodori

@@ -23,7 +23,7 @@ impl fmt::Display for SchedulingError {
         match self {
             SchedulingError::ExecutionError => write!(f, "cannot execute schedulable"),
             SchedulingError::AlreadyRunning(_) => {
-                write!(f, "another pomodoro or break is already running")
+                write!(f, "another Pomodoro or break is already running")
             }
         }
     }
