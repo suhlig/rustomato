@@ -1,8 +1,11 @@
 use super::{Kind, Schedulable, SqlUuid, Status};
+use refinery::embed_migrations;
+use rusqlite::params;
+use rusqlite::Connection;
 use rusqlite::Error::QueryReturnedNoRows;
-use rusqlite::{params, Connection};
+use rusqlite::OpenFlags;
 use std::fmt;
-use std::path::PathBuf;
+use url::Url;
 
 pub struct Repository {
     db: Connection,
@@ -28,10 +31,17 @@ impl fmt::Display for PersistenceError {
 }
 
 impl Repository {
-    pub fn new(location: &PathBuf) -> Self {
-        Self {
-            db: Connection::open(location).expect("Failed to open database"),
-        }
+    pub fn new(location: &Url) -> Self {
+        embed_migrations!("migrations");
+        let mut conn = Connection::open_with_flags(
+            location.as_str(),
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_CREATE
+                | OpenFlags::SQLITE_OPEN_URI,
+        )
+        .expect("opening database connection");
+        migrations::runner().run(&mut conn).unwrap();
+        Self { db: conn }
     }
 
     pub fn active(&self) -> Result<Option<Schedulable>, PersistenceError> {

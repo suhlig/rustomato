@@ -101,7 +101,7 @@ impl Schedulable {
             } else {
                 if self.started_at != 0 {
                     return Status::Active;
-                } else{
+                } else {
                     return Status::New;
                 }
             }
@@ -141,12 +141,7 @@ impl fmt::Display for Schedulable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.status() {
             Status::New => {
-                write!(
-                    f,
-                    "{} ({} min)",
-                    self.kind,
-                    self.duration,
-                )
+                write!(f, "{} ({} min)", self.kind, self.duration,)
             }
             Status::Active => {
                 write!(

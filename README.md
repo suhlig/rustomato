@@ -5,11 +5,11 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 # Usage
 
 ```command
-rustomato pomodoro [start]   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
-rustomato pomodoro annotate  # Annotates a¹ Pomodoro.
-rustomato pomodoro interrupt # Mark a¹ Pomodoro as interrupted.
-rustomato pomodoro log       # Log a previously finished pomodoro.
-rustomato break [start]      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
+$ rustomato pomodoro [start]   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
+$ rustomato pomodoro annotate  # Annotates a¹ Pomodoro.
+$ rustomato pomodoro interrupt # Mark a¹ Pomodoro as interrupted.
+$ rustomato pomodoro log       # Log a previously finished pomodoro.
+$ rustomato break [start]      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 ```
 [1] the running, if there is one, or the most recently completed, or the given
 
@@ -36,15 +36,13 @@ rustomato break [start]      # Starts a break. Auto-finishes the currently activ
 There is a GitHub action that compiles the code, creates a new release and attaches the binaries:
 
 ```command
-$ gh release create v0.0.3 --notes 'Enforce singularity (per `DATABASE_URL`)'
+$ gh release create v0.0.3 --notes 'Enforce singularity (per `RUSTOMATO_ROOT`)'
 ```
 
 # Notes
 
 * Install and update rust with `rustup`
 * Run: `cargo run -- pomodoro`
-* Load the database schema with `sqlite3 ~/.rustomato.db < db/schema.sql`
-  - TODO Make this a proper migration; embedded into the binary (e.g. using [Refinery](https://github.com/rust-db/refinery))
 * Build a release manually with `cargo build --release` (binary will be found in `target/release/`)
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * TODO Show progress bar only when attached to a terminal

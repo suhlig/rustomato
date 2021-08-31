@@ -1,4 +1,4 @@
-mod rustomato;
+pub mod rustomato;
 
 use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
@@ -6,6 +6,7 @@ use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
 use std::path::*;
 use std::{env, process};
+use url::Url;
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
@@ -100,18 +101,36 @@ struct FinishBreak {}
 
 fn main() {
     // TODO Use Clap's `env` option
-    let location = match env::var("DATABASE_URL") {
+    let root = match env::var("RUSTOMATO_ROOT") {
         Ok(val) => PathBuf::from(val),
         Err(_) => {
-            let mut home = dirs::home_dir().expect("Unable to resolve home directory");
-            home.push(".rustomato.db");
-            home.to_path_buf()
+            let mut root = dirs::home_dir().expect("resolving the home directory");
+            root.push(".rustomato/");
+
+            if !root.exists() {
+                std::fs::create_dir(root.as_path()).expect("creating the root directory");
+            }
+
+            root.to_path_buf()
         }
     };
 
-    println!("Using database {:?}", location); // TODO Only if verbose
+    println!("Using root {}", root.to_str().expect("converting")); // TODO Only if verbose
 
-    let repo = Repository::new(&location);
+    let db_url = match env::var("RUSTOMATO_DATABASE_URL") {
+        Ok(val) => Url::parse(&String::from(val)).expect("parsing the database URL"),
+        Err(_) => {
+            let base = Url::parse("file://").expect("parsing the base URL");
+            let with_dir = base
+                .join(root.to_str().expect("converting root to string"))
+                .expect("appending the root directory");
+            with_dir.join("data.db").expect("parsing the database URL")
+        }
+    };
+
+    println!("Using database URL {}", db_url); // TODO Only if verbose
+
+    let repo = Repository::new(&db_url);
     let scheduler = Scheduler::new(repo);
     let pid = process::id();
 
