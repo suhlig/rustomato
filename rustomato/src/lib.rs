@@ -53,13 +53,13 @@ impl fmt::Display for SqlUuid {
 }
 
 pub struct Schedulable {
-    pid: u32,
-    kind: Kind,
-    uuid: SqlUuid,
-    duration: u64, // TODO Use duration with a unit
-    started_at: u64,
-    finished_at: u64,
-    cancelled_at: u64,
+    pub pid: u32,
+    pub kind: Kind,
+    pub uuid: SqlUuid,
+    pub duration: u64, // TODO Use duration with a unit
+    pub started_at: u64,
+    pub finished_at: u64,
+    pub cancelled_at: u64,
 }
 
 pub enum Status {

@@ -36,11 +36,15 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 # Development
 
 * Install and update rust with `rustup`
+* Run tests with `cargo test`
+  - use `cargo watch -x test` for fast iteration
+  - install the plugin with `cargo install cargo-watch`
 * Run the app: `cargo run -- pomodoro`
 * Build a release manually with `cargo build --release` (binary will be found in `target/release/`)
 
 # TODO
 
+* In CI, check formatting with `find */src -name '*.rs' -exec rustfmt --check {} \;`
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * Show progress bar only when attached to a terminal
 * Not sure if we need the views (beyond `db/test.sh`)
