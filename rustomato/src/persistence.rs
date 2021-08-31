@@ -31,10 +31,10 @@ impl fmt::Display for PersistenceError {
 }
 
 impl Repository {
-    pub fn new(location: &Url) -> Self {
+    pub fn from_str(location: &str) -> Self {
         embed_migrations!("migrations");
         let mut conn = Connection::open_with_flags(
-            location.as_str(),
+            location,
             OpenFlags::SQLITE_OPEN_READ_WRITE
                 | OpenFlags::SQLITE_OPEN_CREATE
                 | OpenFlags::SQLITE_OPEN_URI,
@@ -42,6 +42,10 @@ impl Repository {
         .expect("opening database connection");
         migrations::runner().run(&mut conn).unwrap();
         Self { db: conn }
+    }
+
+    pub fn from_url(location: &Url) -> Self {
+        Self::from_str(location.as_str())
     }
 
     pub fn active(&self) -> Result<Option<Schedulable>, PersistenceError> {

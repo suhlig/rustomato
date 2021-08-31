@@ -1,8 +1,8 @@
+use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
 use std::path::*;
-use clap::{crate_version, AppSettings, Clap};
 use std::{env, process};
 use url::Url;
 
@@ -128,7 +128,7 @@ fn main() {
 
     println!("Using database URL {}", db_url); // TODO Only if verbose
 
-    let repo = Repository::new(&db_url);
+    let repo = Repository::from_url(&db_url);
     let scheduler = Scheduler::new(repo);
     let pid = process::id();
 
