@@ -13,18 +13,18 @@ pub struct Repository {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum PersistenceError {
-    CannotSave,
-    CannotUpdate,
-    CannotFind,
+    CannotSave(String),
+    CannotUpdate(String),
+    CannotFind(String),
     AlreadyRunning(u32),
 }
 
 impl fmt::Display for PersistenceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PersistenceError::CannotSave => write!(f, "Cannot save"),
-            PersistenceError::CannotUpdate => write!(f, "Cannot update"),
-            PersistenceError::CannotFind => write!(f, "Cannot find"),
+            PersistenceError::CannotSave(e) => write!(f, "Cannot save: {}", e),
+            PersistenceError::CannotUpdate(e) => write!(f, "Cannot update: {}", e),
+            PersistenceError::CannotFind(e) => write!(f, "Cannot find: {}", e),
             PersistenceError::AlreadyRunning(pid) => write!(f, "Already running as {}", pid),
         }
     }
@@ -59,7 +59,7 @@ impl Repository {
                 Err(e) => Err(e),
             },
             Err(QueryReturnedNoRows) => Ok(None),
-            Err(_) => Err(PersistenceError::CannotFind),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
         }
     }
 
@@ -88,7 +88,7 @@ impl Repository {
             },
         })) {
             Ok(val) => Ok(val),
-            Err(_) => Err(PersistenceError::CannotFind)
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
         };
     }
 
@@ -96,48 +96,49 @@ impl Repository {
         let uuid = s.uuid.to_string();
 
         match s.status() {
-            Status::New => {Err(PersistenceError::CannotSave)},
+            Status::New => {Err(PersistenceError::CannotSave(format!("{} has not been started; cannot save", s)))},
             Status::Active => {
                 match self.db.execute(
-                    "INSERT INTO schedulables (pid, kind, uuid, duration, started_at) VALUES (?1, ?2, ?3, ?4, strftime('%s','now'))",
-                    params![s.pid, s.kind, uuid, s.duration],
+                    "INSERT INTO schedulables (pid, kind, uuid, duration, started_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![s.pid, s.kind, uuid, s.duration, s.started_at],
                 ) {
                     Ok(_) => {
-                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the inserted"))
+                        Ok(self.find_by_uuid(s.uuid).expect("Could not find the inserted"))
                     },
-                    Err(_) => {
+                    Err(e) => {
                         match self.active() {
                             Ok(option) => {
                                 match option {
                                     Some(existing) => return Err(PersistenceError::AlreadyRunning(existing.pid)),
-                                    None => return Err(PersistenceError::CannotSave),
-                                };
+                                    None => return Err(PersistenceError::CannotSave(format!("{} could not be inseted as active, but there was no active Pomodoro or break found, either.", s))),
+                                }
                             },
-                            Err(_) => panic!(""),
-                        }
+                            Err(_) => (), // not sure if we care at this point
+                        };
+                        return Err(PersistenceError::CannotSave(format!("{}", e)))
                     }
                 }
             }
             Status::Cancelled => {
                 match self.db.execute(
-                        "UPDATE schedulables SET pid = NULL, cancelled_at = strftime('%s','now') WHERE uuid == ?1;",
-                        params![uuid],
+                        "UPDATE schedulables SET pid = NULL, cancelled_at = ?2 WHERE uuid == ?1;",
+                        params![uuid, s.cancelled_at],
                     ){
                     Ok(_) => {
-                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the cancelled"))
+                        Ok(self.find_by_uuid(s.uuid).expect("Could not find the cancelled"))
                     },
-                    Err(_) => {return Err(PersistenceError::CannotUpdate)}
+                    Err(e) => {Err(PersistenceError::CannotUpdate(format!("{}", e)))}
                 }
             }
             Status::Finished => {
                 match self.db.execute(
-                        "UPDATE schedulables SET pid = NULL, finished_at = strftime('%s','now') WHERE uuid == ?1;",
-                        params![uuid],
+                        "UPDATE schedulables SET pid = NULL, finished_at = ?2 WHERE uuid == ?1;",
+                        params![uuid, s.finished_at],
                     ){
                     Ok(_) => {
-                        return Ok(self.find_by_uuid(s.uuid).expect("Could not find the finished"))
+                        Ok(self.find_by_uuid(s.uuid).expect("Could not find the finished"))
                     },
-                    Err(_) => {return Err(PersistenceError::CannotUpdate)}
+                    Err(e) => {Err(PersistenceError::CannotUpdate(format!("{}", e)))}
                 }
             }
         }

@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod persistence;
 pub mod scheduling;
 
+#[derive(Debug)]
 pub enum Kind {
     Pomodoro,
     Break,
@@ -18,7 +19,7 @@ pub struct UnknownKind {
     offender: String,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct SqlUuid(Uuid);
 
 impl SqlUuid {
@@ -122,12 +123,6 @@ impl fmt::Display for Kind {
     }
 }
 
-impl std::fmt::Debug for Kind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Kind").finish()
-    }
-}
-
 impl ToSql for Kind {
     fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
         match self {
@@ -171,5 +166,19 @@ impl fmt::Display for Schedulable {
                 )
             }
         }
+    }
+}
+
+impl std::fmt::Debug for Schedulable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Schedulable")
+        .field("pid", &self.pid)
+        .field("kind", &self.kind)
+        .field("uuid", &self.uuid)
+        .field("duration", &self.duration)
+        .field("started_at", &self.started_at)
+        .field("finished_at", &self.finished_at)
+        .field("cancelled_at", &self.cancelled_at)
+        .finish()
     }
 }

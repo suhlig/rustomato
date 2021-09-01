@@ -51,3 +51,5 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 * Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
 * Annotations table, joined onto Pomodori
 * Interrupts table, joined onto Pomodori
+* If not nil, `finished_at` must be >= `started_at`
+* If not nil, `cancelled_at` must be >= `started_at`
