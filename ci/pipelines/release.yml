@@ -1,0 +1,28 @@
+---
+jobs:
+  - name: test
+    plan:
+    - get: source
+      trigger: true
+    - task: run-tests
+      file: source/ci/tasks/test.yml
+
+  - name: release
+    plan:
+    - get: source
+      trigger: true
+      passed: [ test ]
+    - task: build-release-binaries
+      file: source/ci/tasks/build-release.yml
+      params: { target: ((target)) }
+      output_mapping: { target: ((target)) }
+
+# TODO Attach as assets to a GitHub release
+
+resources:
+  - name: source
+    type: git
+    icon: github-circle
+    source: &github
+      uri: git@github.com:suhlig/rustomato.git
+      private_key: ((github.ssh_key))
