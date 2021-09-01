@@ -47,9 +47,7 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 * In CI, check formatting with `find */src -name '*.rs' -exec rustfmt --check {} \;`
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * Show progress bar only when attached to a terminal
-* Not sure if we need the views (beyond `db/test.sh`)
-* Write a test that proves that there are no two active (Pomororo XOR Break) at the same time
 * Annotations table, joined onto Pomodori
 * Interrupts table, joined onto Pomodori
-* If not nil, `finished_at` must be >= `started_at`
-* If not nil, `cancelled_at` must be >= `started_at`
+* Add DB constraint to ensure that `finished_at`, if not nil, must be >= `started_at`
+* Add DB constraint to ensure that `cancelled_at`, if not nil, must be >= `started_at`

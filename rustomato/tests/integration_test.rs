@@ -20,7 +20,7 @@ fn save_active() {
     let repo = Repository::from_str("file::memory:");
     let mut pom = Schedulable::new(4711, Kind::Pomodoro, 25);
     pom.started_at = 12;
-    repo.save(&pom).expect("saving new pomodoro");
+    repo.save(&pom).expect("saving active pomodoro");
 
     let active = repo.active().expect("querying active");
     assert_eq!(active.is_some(), true);
@@ -69,13 +69,29 @@ fn save_cancelled() {
 }
 
 #[test]
-fn save_second_active() {
+fn save_second_after_finish() {
     let repo = Repository::from_str("file::memory:");
     let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
     pom.started_at = 12;
-    repo.save(&pom).expect("saving new pomodoro");
+    repo.save(&pom).expect("saving active pomodoro");
 
-    let mut second = Schedulable::new(4711, Kind::Pomodoro, 25);
+    pom.finished_at = 13;
+    repo.save(&pom).expect("saving finished pomodoro");
+
+    let mut second = Schedulable::new(4711, Kind::Break, 25);
+    second.started_at = 14;
+    let result = repo.save(&second);
+    assert_eq!(result.is_ok(), true);
+}
+
+#[test]
+fn save_second() {
+    let repo = Repository::from_str("file::memory:");
+    let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+    pom.started_at = 12;
+    repo.save(&pom).expect("saving active pomodoro");
+
+    let mut second = Schedulable::new(4711, Kind::Break, 25);
     second.started_at = 13;
     let result = repo.save(&second);
     assert_eq!(result.is_err(), true);
@@ -85,6 +101,3 @@ fn save_second_active() {
         Err(e) => assert_eq!(e, PersistenceError::AlreadyRunning(42)),
     }
 }
-
-#[test]
-fn save_second_pid() {}
