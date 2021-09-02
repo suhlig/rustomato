@@ -81,9 +81,8 @@ fn waiter(duration: u64) -> Receiver<bool> {
 
     // TODO Only if attached to a terminal
     let mut pb = ProgressBar::new(60 * duration);
-    // pb.show_bar = true;
+
     pb.show_speed = false;
-    // pb.show_percent = true;
     pb.show_counter = false;
     pb.show_time_left = false;
     pb.show_tick = false;
@@ -113,7 +112,6 @@ fn waiter(duration: u64) -> Receiver<bool> {
                     }
                     Err(TryRecvError::Empty) => {
                         thread::sleep(Duration::from_millis(25));
-                        pb.tick();
                     }
                 }
             }
