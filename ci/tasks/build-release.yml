@@ -12,7 +12,7 @@ params:
   target:
 
 outputs:
-  - name: binary
+  - name: binaries
 
 run:
   dir: source
@@ -23,4 +23,5 @@ run:
       apt --yes update && apt --yes install gcc-mingw-w64
       rustup target add "$target"
       cargo build --release --target "$target"
-      find target/"$target"/release/ -maxdepth 1 -type f -executable -exec cp {} ../binary/ \;
+
+      find target/"$target"/release/ -maxdepth 1 -type f -executable -exec cp {} ../binaries \;
