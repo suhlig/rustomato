@@ -13,7 +13,15 @@ $ rustomato break [start]      # Starts a break. Auto-finishes the currently act
 
 `pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the Pomodoro or break is finished immediately.
 
+The possible application states are valid for an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`, which defaults to `$RUSTOMATO_ROOT/data.db`):
+
+  ![Application States](doc/statemachine.drawio.svg)
+
+The default for `$RUSTOMATO_ROOT` is `$HOME/.rustomato`.
+
 ## Hooks
+
+> WIP
 
 Until we have them, here is how to use notifications:
 
