@@ -11,6 +11,8 @@ use url::Url;
 #[clap(version = crate_version!())]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
+    #[clap(short, long, takes_value(false))]
+    verbose: bool,
     #[clap(subcommand)]
     subcmd: SubCommands,
 }
@@ -113,7 +115,11 @@ fn main() {
         }
     };
 
-    println!("Using root {}", root.to_str().expect("converting")); // TODO Only if verbose
+    let verbose = Opts::parse().verbose;
+
+    if verbose {
+        println!("Using root {}", root.to_str().expect("converting"));
+    }
 
     let db_url = match env::var("RUSTOMATO_DATABASE_URL") {
         Ok(val) => Url::parse(&String::from(val)).expect("parsing the database URL"),
@@ -126,7 +132,9 @@ fn main() {
         }
     };
 
-    println!("Using database URL {}", db_url); // TODO Only if verbose
+    if verbose {
+        println!("Using database URL {}", db_url);
+    }
 
     let repo = Repository::from_url(&db_url);
     let scheduler = Scheduler::new(repo);
@@ -138,11 +146,15 @@ fn main() {
                 let pom =
                     Schedulable::new(pid, Kind::Pomodoro, start_pomodoro_options.duration.into());
 
-                println!("Starting {}", pom); // TODO Only if verbose
+                if verbose {
+                    println!("Starting {}", pom);
+                }
 
                 match scheduler.run(pom) {
                     Ok(completed_pom) => {
-                        println!("\n{}", completed_pom); // TODO Only if verbose
+                        if verbose {
+                            println!("\n{}", completed_pom);
+                        }
 
                         match completed_pom.status() {
                             Status::Cancelled => {
@@ -174,11 +186,15 @@ fn main() {
             BreakCommands::Start(start_break_options) => {
                 let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
 
-                println!("Starting {}", br3ak); // TODO Only if verbose
+                if verbose {
+                    println!("Starting {}", br3ak);
+                }
 
                 match scheduler.run(br3ak) {
                     Ok(completed_break) => {
-                        println!("\n{}", completed_break); // TODO Only if verbose
+                        if verbose {
+                            println!("\n{}", completed_break);
+                        }
                         process::exit(0);
                     }
                     Err(err) => {
