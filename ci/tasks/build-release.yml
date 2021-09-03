@@ -14,8 +14,11 @@ params:
 outputs:
   - name: binaries
 
-caches:
-  - path: "$HOME/.cargo"
+caches: # https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+  - path: .cargo/bin/
+  - path: .cargo/registry/index/
+  - path: .cargo/registry/cache/
+  - path: .cargo/git/db/
 
 run:
   dir: source
@@ -23,6 +26,7 @@ run:
   args:
     - -c
     - |
+      export CARGO_HOME=../.cargo
       [[ "$target" == "x86_64-pc-windows-gnu" ]] && apt --yes update && apt --yes install gcc-mingw-w64
       rustup target add "$target"
       cargo build --release --target "$target"
