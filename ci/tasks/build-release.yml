@@ -20,7 +20,11 @@ run:
   args:
     - -c
     - |
-      apt --yes update && apt --yes install gcc-mingw-w64
+      if [ "$target" == x86_64-pc-windows-gnu ] ; then
+        apt --yes update
+        apt --yes install gcc-mingw-w64
+      fi
+
       rustup target add "$target"
       cargo build --release --target "$target"
 
