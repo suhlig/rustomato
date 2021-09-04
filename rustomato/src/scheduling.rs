@@ -31,7 +31,7 @@ impl fmt::Display for SchedulingError {
 
 impl Scheduler {
     pub fn new(repo: Repository) -> Self {
-        Self { repo: repo }
+        Self { repo }
     }
 
     pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
@@ -59,10 +59,10 @@ impl Scheduler {
                 // Handle save error more detailed
                 self.repo.save(&schedulable).expect("Unable to persist");
 
-                return Ok(schedulable);
+                Ok(schedulable)
             }
             Err(_) => {
-                return Err(SchedulingError::ExecutionError);
+                Err(SchedulingError::ExecutionError)
             }
         }
     }
@@ -119,7 +119,7 @@ fn waiter(duration: u64) -> Receiver<bool> {
     })
     .join()
     .unwrap();
-    return result_rx;
+    result_rx
 }
 
 fn now() -> u64 {

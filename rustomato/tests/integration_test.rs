@@ -3,21 +3,21 @@ use rustomato::{Kind, Schedulable};
 
 #[test]
 fn no_active() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let active = repo.active().expect("querying active");
     assert_eq!(active.is_none(), true);
 }
 
 #[test]
 fn save_new() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let result = repo.save(&Schedulable::new(4711, Kind::Pomodoro, 25));
     assert_eq!(result.is_err(), true);
 }
 
 #[test]
 fn save_active() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let mut pom = Schedulable::new(4711, Kind::Pomodoro, 25);
     pom.started_at = 12;
     repo.save(&pom).expect("saving active pomodoro");
@@ -28,7 +28,7 @@ fn save_active() {
 
 #[test]
 fn save_finished() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let mut pom = Schedulable::new(4711, Kind::Pomodoro, 25);
     pom.started_at = 12;
 
@@ -50,7 +50,7 @@ fn save_finished() {
 
 #[test]
 fn save_cancelled() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let mut pom = Schedulable::new(4711, Kind::Pomodoro, 25);
     pom.started_at = 12;
 
@@ -70,7 +70,7 @@ fn save_cancelled() {
 
 #[test]
 fn save_second_after_finish() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
     pom.started_at = 12;
     repo.save(&pom).expect("saving active pomodoro");
@@ -86,7 +86,7 @@ fn save_second_after_finish() {
 
 #[test]
 fn save_second() {
-    let repo = Repository::from_str("file::memory:");
+    let repo = Repository::new("file::memory:");
     let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
     pom.started_at = 12;
     repo.save(&pom).expect("saving active pomodoro");

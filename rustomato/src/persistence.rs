@@ -31,28 +31,28 @@ impl fmt::Display for PersistenceError {
 }
 
 impl Repository {
-    pub fn from_str(location: &str) -> Self {
+    pub fn new(location: &str) -> Self {
         embed_migrations!("migrations");
-        let mut conn = Connection::open_with_flags(
+        let mut db = Connection::open_with_flags(
             location,
             OpenFlags::SQLITE_OPEN_READ_WRITE
                 | OpenFlags::SQLITE_OPEN_CREATE
                 | OpenFlags::SQLITE_OPEN_URI,
         )
         .expect("opening database connection");
-        migrations::runner().run(&mut conn).unwrap();
-        Self { db: conn }
+        migrations::runner().run(&mut db).unwrap();
+        Self { db }
     }
 
     pub fn from_url(location: &Url) -> Self {
-        Self::from_str(location.as_str())
+        Self::new(location.as_str())
     }
 
     pub fn active(&self) -> Result<Option<Schedulable>, PersistenceError> {
         match self.db.query_row(
             "SELECT uuid from schedulables where pid IS NOT NULL",
             [],
-            |row| row.get(0).into(), // TODO Do we need the into?
+            |row| row.get(0),
         ) {
             Ok(val) => match self.find_by_uuid(val) {
                 Ok(schedulable) => Ok(Some(schedulable)),
@@ -70,22 +70,13 @@ impl Repository {
             "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at from schedulables where uuid=?1",
             params![uuid_s],
             |row| Ok(Schedulable {
-            uuid: uuid,
+            uuid,
             kind: Kind::from(row.get(1).expect("unable to fetch kind")).expect("unable to convert kind"),
-            pid: match row.get(2) {
-                Ok(val) => val,
-                Err(_) => 0,
-            },
+            pid: row.get(2).unwrap_or(0),
             duration: row.get(3).expect("unable to convert duration"),
             started_at: row.get(4).expect("unable to convert started_at"),
-            finished_at: match row.get(5) {
-                Ok(val) => val,
-                Err(_) => 0,
-            },
-            cancelled_at: match row.get(6) {
-                Ok(val) => val,
-                Err(_) => 0,
-            },
+            finished_at: row.get(5).unwrap_or(0),
+            cancelled_at: row.get(6).unwrap_or(0),
         })) {
             Ok(val) => Ok(val),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
@@ -106,15 +97,12 @@ impl Repository {
                         Ok(self.find_by_uuid(s.uuid).expect("Could not find the inserted"))
                     },
                     Err(e) => {
-                        match self.active() {
-                            Ok(option) => {
-                                match option {
-                                    Some(existing) => return Err(PersistenceError::AlreadyRunning(existing.pid)),
-                                    None => return Err(PersistenceError::CannotSave(format!("{} could not be inseted as active, but there was no active Pomodoro or break found, either.", s))),
-                                }
-                            },
-                            Err(_) => (), // not sure if we care at this point
-                        };
+                         if let Ok(option) = self.active() {
+                             match option {
+                                 Some(existing) => return Err(PersistenceError::AlreadyRunning(existing.pid)),
+                                 None => return Err(PersistenceError::CannotSave(format!("{} could not be inseted as active, but there was no active Pomodoro or break found, either.", s))),
+                             }
+                         };
                         return Err(PersistenceError::CannotSave(format!("{}", e)))
                     }
                 }

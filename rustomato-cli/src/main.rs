@@ -111,7 +111,7 @@ fn main() {
                 std::fs::create_dir(root.as_path()).expect("creating the root directory");
             }
 
-            root.to_path_buf()
+            root
         }
     };
 
@@ -122,7 +122,7 @@ fn main() {
     }
 
     let db_url = match env::var("RUSTOMATO_DATABASE_URL") {
-        Ok(val) => Url::parse(&String::from(val)).expect("parsing the database URL"),
+        Ok(val) => Url::parse(&val).expect("parsing the database URL"),
         Err(_) => {
             let base = Url::parse("file://").expect("parsing the base URL");
             let with_dir = base

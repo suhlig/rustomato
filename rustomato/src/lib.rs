@@ -19,16 +19,12 @@ pub struct UnknownKind {
     offender: String,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct SqlUuid(Uuid);
 
-impl SqlUuid {
-    pub fn new() -> Self {
+impl Default for SqlUuid {
+    fn default() -> Self {
         Self(Uuid::new_v4())
-    }
-
-    pub fn to_string(&self) -> String {
-        self.0.to_simple().to_string()
     }
 }
 
@@ -49,7 +45,7 @@ impl FromSql for SqlUuid {
 
 impl fmt::Display for SqlUuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.0.to_simple().to_string())
     }
 }
 
@@ -83,10 +79,10 @@ impl Kind {
 impl Schedulable {
     pub fn new(pid: u32, kind: Kind, duration: u64) -> Self {
         Self {
-            pid: pid,
-            kind: kind,
-            uuid: SqlUuid::new(),
-            duration: duration,
+            pid,
+            kind,
+            uuid: SqlUuid::default(),
+            duration,
             started_at: 0,
             finished_at: 0,
             cancelled_at: 0,
@@ -95,17 +91,13 @@ impl Schedulable {
 
     pub fn status(&self) -> Status {
         if self.cancelled_at != 0 {
-            return Status::Cancelled;
+            Status::Cancelled
+        } else if self.finished_at != 0 {
+            Status::Finished
+        } else if self.started_at != 0 {
+            Status::Active
         } else {
-            if self.finished_at != 0 {
-                return Status::Finished;
-            } else {
-                if self.started_at != 0 {
-                    return Status::Active;
-                } else {
-                    return Status::New;
-                }
-            }
+            Status::New
         }
     }
 }
@@ -166,19 +158,5 @@ impl fmt::Display for Schedulable {
                 )
             }
         }
-    }
-}
-
-impl std::fmt::Debug for Schedulable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Schedulable")
-        .field("pid", &self.pid)
-        .field("kind", &self.kind)
-        .field("uuid", &self.uuid)
-        .field("duration", &self.duration)
-        .field("started_at", &self.started_at)
-        .field("finished_at", &self.finished_at)
-        .field("cancelled_at", &self.cancelled_at)
-        .finish()
     }
 }
