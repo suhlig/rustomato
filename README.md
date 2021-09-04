@@ -21,7 +21,7 @@ The default for `$RUSTOMATO_ROOT` is `$HOME/.rustomato`.
 
 ## Hooks
 
-> WIP
+> WIP - look at https://github.com/crate-ci/cargo-release/blob/master/src/cmd.rs for an example
 
 Until we have them, here is how to use notifications:
 
@@ -41,6 +41,10 @@ Or, on a Mac:
 $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 ```
 
+# Release
+
+There is a Concourse pipeline in `ci`. It releases every tag. Note that this needs `git push --follow-tags`.
+
 # Development
 
 * Install and update rust with `rustup`
@@ -58,3 +62,4 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 * Interrupts table, joined onto Pomodori
 * Add DB constraint to ensure that `finished_at`, if not nil, must be >= `started_at`
 * Add DB constraint to ensure that `cancelled_at`, if not nil, must be >= `started_at`
+* Use [cargo release](https://github.com/crate-ci/cargo-release) or, at least, manually verify that the git tag is the same as `cargo metadata --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.targets[].kind[] | contains("bin")) | .version'`
