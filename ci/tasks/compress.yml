@@ -1,0 +1,24 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: { repository: rust }
+
+inputs:
+  - name: binaries
+
+params:
+  target:
+  prefix: rustomato
+
+outputs:
+  - name: assets
+
+run:
+  dir: binaries
+  path: bash
+  args:
+    - -c
+    - |
+      tar --verbose --create --xz --file=../assets/"$prefix"-"$target".tar.xz *
