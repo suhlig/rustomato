@@ -11,7 +11,7 @@ $ rustomato break [start]      # Starts a break. Auto-finishes the currently act
 ```
 [1] the running, if there is one, or the most recently completed, or the given
 
-`pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the Pomodoro or break is finished immediately.
+`pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the currently running Pomodoro is cancelled immediately. If a break is currently running, it is finished.
 
 The possible application states are valid for an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`, which defaults to `$RUSTOMATO_ROOT/data.db`):
 
@@ -52,7 +52,6 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 
 # TODO
 
-* In CI, check formatting with `find */src -name '*.rs' -exec rustfmt --check {} \;`
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * Show progress bar only when attached to a terminal
 * Annotations table, joined onto Pomodori
