@@ -1,0 +1,21 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: { repository: rust }
+
+inputs:
+  - name: linux
+  - name: windows
+  - name: darwin
+
+run:
+  dir: source
+  path: bash
+  args:
+    - -c
+    - |
+      for platform in linux windows darwin; do
+        ls -al "$platform"
+      done
