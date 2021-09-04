@@ -8,8 +8,17 @@ image_resource:
 inputs:
   - name: source
 
+caches: # https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+  - path: .cargo/bin/
+  - path: .cargo/registry/index/
+  - path: .cargo/registry/cache/
+  - path: .cargo/git/db/
+
 run:
   dir: source
-  path: cargo
+  path: bash
   args:
-    - clippy
+    - -c
+    - |
+      rustup component add clippy # TODO Create an image that already has the latest clippy
+      cargo clippy

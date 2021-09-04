@@ -16,6 +16,9 @@ caches: # https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-carg
 
 run:
   dir: source
-  path: cargo
+  path: bash
   args:
-    - test
+    - -c
+    - |
+      rustup component add rustfmt # TODO Create an image that already has the latest rustfmt
+      rustfmt --check */src/**.rs
