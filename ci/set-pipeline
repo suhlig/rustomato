@@ -7,13 +7,9 @@ CONCOURSE_TARGET=uh
 PIPELINE_NAME=rustomato
 SCRIPT_PATH=$(dirname "$(realpath -s "$0")")
 
-# x86_64-apple-darwin needs an macOS worker
-for target in x86_64-pc-windows-gnu x86_64-unknown-linux-gnu; do
-  fly \
-      --target "$CONCOURSE_TARGET" \
-    set-pipeline \
-      --pipeline="$PIPELINE_NAME" \
-      --config "$SCRIPT_PATH"/pipelines/release.yml \
-      --load-vars-from="${SCRIPT_PATH}/private-config.yml" \
-      --instance-var target="$target"
-done
+fly \
+    --target "$CONCOURSE_TARGET" \
+  set-pipeline \
+    --pipeline="$PIPELINE_NAME" \
+    --config "$SCRIPT_PATH"/pipelines/release.yml \
+    --load-vars-from="${SCRIPT_PATH}/private-config.yml"

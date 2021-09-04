@@ -1,23 +1,86 @@
 ---
 jobs:
-  - name: test
+  - name: test-main
     plan:
     - get: source
       trigger: true
+    - task: rustfmt
+      file: source/ci/tasks/rustfmt.yml
+    - task: clippy
+      file: source/ci/tasks/clippy.yml
     - task: run-tests
       file: source/ci/tasks/test.yml
 
-  - name: release
+  - name: test-it
     plan:
     - get: source
+    - get: tagged-commits
       trigger: true
-      passed: [ test ]
-    - task: build-release-binaries
-      file: source/ci/tasks/build-release.yml
-      params: { target: ((target)) }
-      output_mapping: { target: ((target)) }
+    - task: rustfmt
+      file: source/ci/tasks/rustfmt.yml
+      input_mapping: { source: tagged-commits }
+    - task: clippy
+      file: source/ci/tasks/clippy.yml
+      input_mapping: { source: tagged-commits }
+    - task: run-tests
+      file: source/ci/tasks/test.yml
+      input_mapping: { source: tagged-commits }
 
-# TODO Attach as assets to a GitHub release
+  - name: build-it
+    plan:
+    - get: source
+    - get: tagged-commits
+      trigger: true
+      passed: [ test-it ]
+    - in_parallel:
+      - task: build-release-binary-linux
+        file: source/ci/tasks/build-release.yml
+        input_mapping: { source: tagged-commits }
+        params: { target: x86_64-unknown-linux-gnu }
+        output_mapping: { binaries: x86_64-unknown-linux-gnu }
+      - task: build-release-binary-windows
+        file: source/ci/tasks/build-release.yml
+        input_mapping: { source: tagged-commits }
+        params: { target: x86_64-pc-windows-gnu }
+        output_mapping: { binaries: x86_64-pc-windows-gnu }
+      # - task: build-release-binary-darwin
+      #   file: source/ci/tasks/build-release.yml
+      #   input_mapping: { source: tagged-commits }
+      #   params:
+      #     target: x86_64-apple-darwin
+      #     MACOSX_DEPLOYMENT_TARGET: 10.7
+      #   output_mapping: { binaries: x86_64-apple-darwin }
+    - in_parallel:
+      - task: compress-release-binary-linux
+        file: source/ci/tasks/compress.yml
+        params: { target: x86_64-unknown-linux-gnu }
+        input_mapping: { binaries: x86_64-unknown-linux-gnu }
+        output_mapping: { compressed: assets-linux }
+      - task: compress-release-binary-windows
+        file: source/ci/tasks/compress.yml
+        params: { target: x86_64-pc-windows-gnu }
+        input_mapping: { binaries: x86_64-pc-windows-gnu }
+        output_mapping: { compressed: assets-windows }
+      # - task: compress-release-binary-darwin
+      #   file: source/ci/tasks/compress.yml
+      #   input_mapping: { binaries: x86_64-apple-darwin }
+      #   params:
+      #     target:
+      #     MACOSX_DEPLOYMENT_TARGET: 10.7
+      #   output_mapping: { compressed: assets-darwin }
+    - task: collect-assets
+      file: source/ci/tasks/collect.yml
+      input_mapping:
+        linux: assets-linux
+        windows: assets-windows
+        darwin: assets-linux # TODO workaround until we have Darwin working
+      output_mapping: { collected: assets }
+    - put: gh-release
+      params:
+        name: tagged-commits/.git/ref
+        tag: tagged-commits/.git/ref
+        globs:
+          - assets/*
 
 resources:
   - name: source
@@ -26,3 +89,19 @@ resources:
     source: &github
       uri: git@github.com:suhlig/rustomato.git
       private_key: ((github.ssh_key))
+
+  - name: tagged-commits
+    type: git
+    icon: tag
+    source:
+      <<: *github
+      fetch_tags: true
+      tag_filter: v*
+
+  - name: gh-release
+    type: github-release
+    icon: github-circle
+    source:
+      owner: suhlig
+      repository: rustomato
+      access_token: ((github.token))
