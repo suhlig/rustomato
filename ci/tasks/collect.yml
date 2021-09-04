@@ -1,0 +1,23 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: { repository: rust }
+
+inputs:
+  - name: linux
+  - name: windows
+  - name: darwin
+
+outputs:
+  - name: collected
+
+run:
+  path: bash
+  args:
+    - -c
+    - |
+      for platform in linux windows darwin; do
+        cp "$platform"/* collected
+      done
