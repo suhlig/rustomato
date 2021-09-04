@@ -61,9 +61,7 @@ impl Scheduler {
 
                 Ok(schedulable)
             }
-            Err(_) => {
-                Err(SchedulingError::ExecutionError)
-            }
+            Err(_) => Err(SchedulingError::ExecutionError),
         }
     }
 }
