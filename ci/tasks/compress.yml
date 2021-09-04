@@ -13,7 +13,7 @@ params:
   prefix: rustomato
 
 outputs:
-  - name: assets
+  - name: compressed
 
 run:
   dir: binaries
@@ -21,4 +21,4 @@ run:
   args:
     - -c
     - |
-      tar --verbose --create --xz --file=../assets/"$prefix"-"$target".tar.xz *
+      tar --verbose --create --xz --file=../compressed/"$prefix"-"$target".tar.xz *
