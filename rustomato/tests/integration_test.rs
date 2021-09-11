@@ -1,5 +1,6 @@
 use rustomato::persistence::{Repository, PersistenceError};
 use rustomato::{Kind, Schedulable};
+use assert_matches::assert_matches;
 
 #[test]
 fn no_active() {
@@ -99,5 +100,24 @@ fn save_second() {
     match result {
         Ok(_) => panic!("Should have been covered above"),
         Err(e) => assert_eq!(e, PersistenceError::AlreadyRunning(42)),
+    }
+}
+
+#[test]
+fn pom_finished_before_started() {
+    let repo = Repository::new("file::memory:");
+    let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+    pom.started_at = 13;
+    repo.save(&pom).expect("saving active pomodoro");
+
+    pom.finished_at = 12;
+    let result = repo.save(&pom);
+    assert_eq!(result.is_err(), true);
+
+    match result {
+        Ok(_) => panic!("Should have been covered above"),
+        Err(e) => assert_matches!(e, PersistenceError::CannotUpdate(msg) => {
+            assert!(msg.starts_with("CHECK constraint failed"));
+        }),
     }
 }

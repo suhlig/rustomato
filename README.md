@@ -56,10 +56,11 @@ There is a Concourse pipeline in `ci`. It releases every tag. Note that this nee
 
 # TODO
 
+* `--force`
 * `rustomato pomodoro interrupt` sends `SIGUSR1` to the currently running `rustomato` process (use [signal-hook](https://crates.io/crates/signal-hook) for that)
 * Show progress bar only when attached to a terminal
-* Annotations table, joined onto Pomodori
-* Interrupts table, joined onto Pomodori
-* Add DB constraint to ensure that `finished_at`, if not nil, must be >= `started_at`
-* Add DB constraint to ensure that `cancelled_at`, if not nil, must be >= `started_at`
+* `annotate` => needs `annotations` table, joined onto Pomodori
+* `interrupt` => needs `interrupts` table, joined onto Pomodori
+  - `interrupt --external` command
+  - `interrupt --internal` command
 * Use [cargo release](https://github.com/crate-ci/cargo-release) or, at least, manually verify that the git tag is the same as `cargo metadata --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.targets[].kind[] | contains("bin")) | .version'`
