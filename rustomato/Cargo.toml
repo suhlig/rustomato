@@ -12,3 +12,4 @@ pbr = "1.0.3"
 refinery = { version = "~0.6", features = ["rusqlite"]}
 url = "~2.2.2"
 assert_matches = "1.5.0"
+psutil = "3.2.1"

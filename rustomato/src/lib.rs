@@ -3,6 +3,7 @@ use rusqlite::types::{ToSql, ToSqlOutput};
 use rusqlite::Result;
 use std::fmt;
 use uuid::Uuid;
+use psutil::process::Process;
 
 pub mod persistence;
 pub mod scheduling;
@@ -62,6 +63,7 @@ pub struct Schedulable {
 pub enum Status {
     New,
     Active,
+    Stale,
     Cancelled,
     Finished,
 }
@@ -95,7 +97,10 @@ impl Schedulable {
         } else if self.finished_at != 0 {
             Status::Finished
         } else if self.started_at != 0 {
-            Status::Active
+            match Process::new(self.pid) {
+                Ok(_) => Status::Active,
+                Err(_) => Status::Stale,
+            }
         } else {
             Status::New
         }
@@ -133,16 +138,23 @@ impl fmt::Display for Schedulable {
             Status::Active => {
                 write!(
                     f,
-                    "{} {} active since {}",
+                    "{} {} is active since {}",
                     self.kind,
                     self.uuid,
                     self.started_at // TODO print prettier timestamp
                 )
             }
+            Status::Stale => {
+                write!(
+                    f,
+                    "{} {} is stale (pid {} does not exist)",
+                    self.kind, self.uuid, self.pid,
+                )
+            }
             Status::Cancelled => {
                 write!(
                     f,
-                    "{} {} cancelled at {}",
+                    "{} {} was cancelled at {}",
                     self.kind,
                     self.uuid,
                     self.cancelled_at // TODO print prettier timestamp
@@ -151,7 +163,7 @@ impl fmt::Display for Schedulable {
             Status::Finished => {
                 write!(
                     f,
-                    "{} {} finished at {}",
+                    "{} {} was finished at {}",
                     self.kind,
                     self.uuid,
                     self.finished_at // TODO print prettier timestamp

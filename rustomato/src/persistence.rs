@@ -88,7 +88,7 @@ impl Repository {
 
         match s.status() {
             Status::New => {Err(PersistenceError::CannotSave(format!("{} has not been started; cannot save", s)))},
-            Status::Active => {
+            Status::Active | Status::Stale => {
                 match self.db.execute(
                     "INSERT INTO schedulables (pid, kind, uuid, duration, started_at) VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![s.pid, s.kind, uuid, s.duration, s.started_at],
