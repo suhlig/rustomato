@@ -21,6 +21,7 @@ struct Opts {
 enum SubCommands {
     Pomodoro(PomodoroCommand),
     Break(BreakCommand),
+    Status(StatusCommand),
 }
 
 /// Work with a Pomodoro
@@ -98,6 +99,10 @@ struct StartBreak {
 /// Finishes the active Break
 #[derive(Clap)]
 struct FinishBreak {}
+
+/// Report status
+#[derive(Clap)]
+struct StatusCommand {}
 
 fn main() {
     // TODO Use Clap's `env` option
@@ -182,6 +187,18 @@ fn main() {
                 eprintln!("TODO Annotating the active Pomodoro");
             }
         },
+        SubCommands::Status(_) => {
+            // TODO Re-use repo, but this will require a better understanding of lifetimes
+            match Repository::from_url(&db_url).active() {
+                Ok(schedulable) => match schedulable {
+                    Some(existing) => println!("{}", existing),
+                    None => println!("Nothing active"),
+                },
+                Err(e) => {
+                    eprintln!("{}", e)
+                }
+            }
+        }
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(start_break_options) => {
                 let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
