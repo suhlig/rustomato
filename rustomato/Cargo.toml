@@ -1,8 +1,8 @@
 [package]
 name = "rustomato"
-version = "0.0.6"
+version = "0.0.7"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 ctrlc = "~3.0"

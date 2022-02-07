@@ -783,7 +783,7 @@ dependencies = [
 
 [[package]]
 name = "rustomato"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "assert_matches",
  "ctrlc",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "rustomato-cli"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "assert_cmd",
  "clap",
