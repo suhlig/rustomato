@@ -3,6 +3,7 @@ jobs:
   - name: test-main
     plan:
     - get: tasks
+    - get: source
       trigger: true
     - task: rustfmt
       file: tasks/rust/rustfmt.yml
@@ -11,7 +12,7 @@ jobs:
     - task: run-tests
       file: tasks/rust/test.yml
 
-  - name: test-it
+  - name: test-tag
     plan:
     - get: tasks
     - get: tagged-commits
@@ -31,7 +32,7 @@ jobs:
     - get: tasks
     - get: tagged-commits
       trigger: true
-      passed: [ test-it ]
+      passed: [ test-tag ]
     - in_parallel:
       - task: build-release-binary-linux
         file: tasks/rust/build-release.yml
@@ -111,11 +112,18 @@ resources:
       private_key: ((github.ssh_key))
       branch:
 
+  - name: source
+    type: git
+    icon: github
+    source: &source
+       uri: git@github.com:suhlig/rustomato.git
+       private_key: ((github.ssh_key))
+
   - name: tagged-commits
     type: git
     icon: tag
     source:
-      <<: *github
+      <<: *source
       fetch_tags: true
       tag_filter: v*
 
