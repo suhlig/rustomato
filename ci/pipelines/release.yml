@@ -2,44 +2,44 @@
 jobs:
   - name: test-main
     plan:
-    - get: source
+    - get: tasks
       trigger: true
     - task: rustfmt
-      file: source/ci/tasks/rustfmt.yml
+      file: tasks/rust/rustfmt.yml
     - task: clippy
-      file: source/ci/tasks/clippy.yml
+      file: tasks/rust/clippy.yml
     - task: run-tests
-      file: source/ci/tasks/test.yml
+      file: tasks/rust/test.yml
 
   - name: test-it
     plan:
-    - get: source
+    - get: tasks
     - get: tagged-commits
       trigger: true
     - task: rustfmt
-      file: source/ci/tasks/rustfmt.yml
+      file: tasks/rust/rustfmt.yml
       input_mapping: { source: tagged-commits }
     - task: clippy
-      file: source/ci/tasks/clippy.yml
+      file: tasks/rust/clippy.yml
       input_mapping: { source: tagged-commits }
     - task: run-tests
-      file: source/ci/tasks/test.yml
+      file: tasks/rust/test.yml
       input_mapping: { source: tagged-commits }
 
   - name: build-it
     plan:
-    - get: source
+    - get: tasks
     - get: tagged-commits
       trigger: true
       passed: [ test-it ]
     - in_parallel:
       - task: build-release-binary-linux
-        file: source/ci/tasks/build-release.yml
+        file: tasks/rust/build-release.yml
         input_mapping: { source: tagged-commits }
         params: { target: x86_64-unknown-linux-gnu }
         output_mapping: { binaries: x86_64-unknown-linux-gnu }
       - task: build-release-binary-windows
-        file: source/ci/tasks/build-release.yml
+        file: tasks/rust/build-release.yml
         input_mapping: { source: tagged-commits }
         params: { target: x86_64-pc-windows-gnu }
         output_mapping: { binaries: x86_64-pc-windows-gnu }
@@ -52,13 +52,17 @@ jobs:
       #   output_mapping: { binaries: x86_64-apple-darwin }
     - in_parallel:
       - task: compress-release-binary-linux
-        file: source/ci/tasks/compress.yml
-        params: { target: x86_64-unknown-linux-gnu }
+        file: tasks/rust/compress.yml
+        params:
+          target: x86_64-unknown-linux-gnu
+          prefix: rustomato
         input_mapping: { binaries: x86_64-unknown-linux-gnu }
         output_mapping: { compressed: assets-linux }
       - task: compress-release-binary-windows
-        file: source/ci/tasks/compress.yml
-        params: { target: x86_64-pc-windows-gnu }
+        file: tasks/rust/compress.yml
+        params:
+          target: x86_64-pc-windows-gnu
+          prefix: rustomato
         input_mapping: { binaries: x86_64-pc-windows-gnu }
         output_mapping: { compressed: assets-windows }
       # - task: compress-release-binary-darwin
@@ -69,26 +73,43 @@ jobs:
       #     MACOSX_DEPLOYMENT_TARGET: 10.7
       #   output_mapping: { compressed: assets-darwin }
     - task: collect-assets
-      file: source/ci/tasks/collect.yml
+      file: tasks/rust/collect.yml
       input_mapping:
         linux: assets-linux
         windows: assets-windows
         darwin: assets-linux # TODO workaround until we have Darwin working
       output_mapping: { collected: assets }
+    - task: compile-release-notes
+      file: tasks/git/release-notes.yml
+      input_mapping: { repo: tagged-commits }
+      output_mapping: { release-notes: release-notes }
     - put: gh-release
       params:
         name: tagged-commits/.git/ref
+        body: release-notes/commits-since-last-tag.txt
         tag: tagged-commits/.git/ref
         globs:
           - assets/*
+    on_success:
+        do:
+          - task: create-publication-message
+            file: tasks/git/create-release-message.yml
+            input_mapping: { source: tagged-commits }
+            params: { project_name: rustomato }
+            output_mapping: { message: telegram-message }
+          - put: telegram-notification
+            params:
+              chat_id: ((telegram.chat_id))
+              text_file: telegram-message/new-release.txt
 
 resources:
-  - name: source
+  - name: tasks
     type: git
     icon: github-circle
     source: &github
-      uri: git@github.com:suhlig/rustomato.git
+      uri: git@github.com:suhlig/concourse-task-store.git
       private_key: ((github.ssh_key))
+      branch:
 
   - name: tagged-commits
     type: git
@@ -105,3 +126,17 @@ resources:
       owner: suhlig
       repository: rustomato
       access_token: ((github.token))
+      pre_release: true
+      drafts: true
+
+  - name: telegram-notification
+    type: telegram-notification
+    icon: telegram
+    source:
+      bot_token: ((telegram.bot_token))
+
+resource_types:
+  - name: telegram-notification
+    type: docker-image
+    source:
+      repository: w32blaster/concourse-telegram-notifier
