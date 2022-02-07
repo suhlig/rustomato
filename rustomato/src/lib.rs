@@ -1,9 +1,9 @@
+use psutil::process::Process;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::types::{ToSql, ToSqlOutput};
 use rusqlite::Result;
 use std::fmt;
 use uuid::Uuid;
-use psutil::process::Process;
 
 pub mod persistence;
 pub mod scheduling;
