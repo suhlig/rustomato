@@ -8,7 +8,7 @@ use url::Url;
 
 /// A simple Pomodoro timer for the command line
 #[derive(Clap)]
-#[clap(version = crate_version!())]
+#[clap(version = app_version())]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
     #[clap(short, long, takes_value(false))]
@@ -225,4 +225,16 @@ fn main() {
             }
         },
     }
+}
+
+/// Provides the app version at build time - either the current git version, or, if not available, the static version string of the crate.
+fn app_version() -> &'static str {
+    match built_info::GIT_VERSION {
+        Some(g) => g,
+        None => crate_version!(),
+    }
+}
+
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs")); // The file has been placed there by the build script.
 }

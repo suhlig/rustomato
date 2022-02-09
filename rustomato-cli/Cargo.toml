@@ -3,6 +3,7 @@ name = "rustomato-cli"
 version = "0.0.7"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
 edition = "2021"
+build = "build.rs"
 
 [[bin]]
 name = "rustomato"
@@ -16,3 +17,6 @@ dirs = "3.0.2"
 assert_cmd = "2.0.1"
 tempfile = "3.2.0"
 predicates = "2.0.0"
+
+[build-dependencies]
+built = { version = "0.5.1", features = ["git2"] }
