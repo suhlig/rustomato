@@ -2,50 +2,50 @@
 jobs:
   - name: test-main
     plan:
-    - get: tasks
+    - get: lib
     - get: source
       trigger: true
     - task: rustfmt
-      file: tasks/rust/rustfmt.yml
+      file: lib/tasks/rust/rustfmt.yml
     - task: clippy
-      file: tasks/rust/clippy.yml
+      file: lib/tasks/rust/clippy.yml
     - task: run-tests
-      file: tasks/rust/test.yml
+      file: lib/tasks/rust/test.yml
 
   - name: test-tag
     plan:
-    - get: tasks
+    - get: lib
     - get: tagged-commits
       trigger: true
     - task: rustfmt
-      file: tasks/rust/rustfmt.yml
+      file: lib/tasks/rust/rustfmt.yml
       input_mapping: { source: tagged-commits }
     - task: clippy
-      file: tasks/rust/clippy.yml
+      file: lib/tasks/rust/clippy.yml
       input_mapping: { source: tagged-commits }
     - task: run-tests
-      file: tasks/rust/test.yml
+      file: lib/tasks/rust/test.yml
       input_mapping: { source: tagged-commits }
 
   - name: build-it
     plan:
-    - get: tasks
+    - get: lib
     - get: tagged-commits
       trigger: true
       passed: [ test-tag ]
     - in_parallel:
       - task: build-release-binary-linux
-        file: tasks/rust/build-release.yml
+        file: lib/tasks/rust/build-release.yml
         input_mapping: { source: tagged-commits }
         params: { target: x86_64-unknown-linux-gnu }
         output_mapping: { binaries: x86_64-unknown-linux-gnu }
       # - task: build-release-binary-windows
-      #   file: tasks/rust/build-release.yml
+      #   file: lib/tasks/rust/build-release.yml
       #   input_mapping: { source: tagged-commits }
       #   params: { target: x86_64-pc-windows-gnu }
       #   output_mapping: { binaries: x86_64-pc-windows-gnu }
       # - task: build-release-binary-darwin
-      #   file: source/ci/tasks/build-release.yml
+      #   file: source/ci/lib/tasks/build-release.yml
       #   input_mapping: { source: tagged-commits }
       #   params:
       #     target: x86_64-apple-darwin
@@ -53,7 +53,7 @@ jobs:
       #   output_mapping: { binaries: x86_64-apple-darwin }
     - in_parallel:
       - task: compress-release-binary-linux
-        file: tasks/rust/compress.yml
+        file: lib/tasks/rust/compress.yml
         params:
           target: x86_64-unknown-linux-gnu
           prefix: rustomato
@@ -62,28 +62,28 @@ jobs:
 # Error: tar: *: No such file or directory
 # https://ci.uhlig.it/teams/main/pipelines/rustomato/jobs/build-it/builds/15#L61fabd58:8
       # - task: compress-release-binary-windows
-      #   file: tasks/rust/compress.yml
+      #   file: lib/tasks/rust/compress.yml
       #   params:
       #     target: x86_64-pc-windows-gnu
       #     prefix: rustomato
       #   input_mapping: { binaries: x86_64-pc-windows-gnu }
       #   output_mapping: { compressed: assets-windows }
       # - task: compress-release-binary-darwin
-      #   file: source/ci/tasks/compress.yml
+      #   file: source/ci/lib/tasks/compress.yml
       #   input_mapping: { binaries: x86_64-apple-darwin }
       #   params:
       #     target:
       #     MACOSX_DEPLOYMENT_TARGET: 10.7
       #   output_mapping: { compressed: assets-darwin }
     - task: collect-assets
-      file: tasks/rust/collect.yml
+      file: lib/tasks/rust/collect.yml
       input_mapping:
         linux: assets-linux
         windows: assets-linux
         darwin: assets-linux # TODO workaround until we have Darwin working
       output_mapping: { collected: assets }
     - task: compile-release-notes
-      file: tasks/git/release-notes.yml
+      file: lib/tasks/git/release-notes.yml
       input_mapping: { repo: tagged-commits }
       output_mapping: { release-notes: release-notes }
     - put: gh-release
@@ -96,7 +96,7 @@ jobs:
     on_success:
         do:
           - task: create-publication-message
-            file: tasks/git/create-release-message.yml
+            file: lib/tasks/git/create-release-message.yml
             input_mapping: { source: tagged-commits }
             params: { project_name: rustomato }
             output_mapping: { message: telegram-message }
@@ -106,13 +106,12 @@ jobs:
               text_file: telegram-message/new-release.txt
 
 resources:
-  - name: tasks
+  - name: lib
     type: git
     icon: github-circle
     source: &github
-      uri: git@github.com:suhlig/concourse-task-store.git
+      uri: git@github.com:suhlig/concourse-task-library.git
       private_key: ((github.ssh_key))
-      branch:
 
   - name: source
     type: git
