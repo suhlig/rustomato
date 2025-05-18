@@ -3,3 +3,4 @@ members = [
     "rustomato-cli",
     "rustomato"
 ]
+resolver = "3"

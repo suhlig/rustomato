@@ -2,7 +2,7 @@
 name = "rustomato"
 version = "0.0.7"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 ctrlc = "~3.0"
