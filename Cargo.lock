@@ -938,28 +938,20 @@ dependencies = [
 name = "rustomato"
 version = "0.0.9"
 dependencies = [
+ "assert_cmd",
  "assert_matches",
+ "built",
+ "clap",
  "ctrlc",
+ "dirs",
  "pbr",
+ "predicates 2.1.5",
  "psutil",
  "refinery",
  "rusqlite",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "rustomato-cli"
-version = "0.0.9"
-dependencies = [
- "assert_cmd",
- "built",
- "clap",
- "dirs",
- "predicates 2.1.5",
- "rustomato",
  "tempfile",
  "url",
+ "uuid",
 ]
 
 [[package]]

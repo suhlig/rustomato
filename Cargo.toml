@@ -1,6 +1,28 @@
-[workspace]
-members = [
-    "rustomato-cli",
-    "rustomato"
-]
-resolver = "3"
+[package]
+name = "rustomato"
+version = "0.0.9"
+authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+ctrlc = "~3.0"
+uuid = { version = "~0.8", features = ["v4"] }
+rusqlite = { version = "~0.25.0", features = ["bundled"] }
+pbr = "1.0.3"
+refinery = { version = "~0.6", features = ["rusqlite"]}
+url = "~2.2.2"
+assert_matches = "1.5.0"
+psutil = "3.2.1"
+clap = { version = "4", features = ["derive", "cargo"] }
+dirs = "3.0.2"
+assert_cmd = "2.0.1"
+tempfile = "3.2.0"
+predicates = "2.0.0"
+
+[[bin]]
+name = "rustomato"
+path = "src/main.rs"
+
+[build-dependencies]
+built = { version = "0.5.1", features = ["git2"] }
