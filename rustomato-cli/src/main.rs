@@ -1,23 +1,22 @@
-use clap::{crate_version, AppSettings, Clap};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
 use std::path::*;
 use std::{env, process};
 use url::Url;
+use clap::{Parser, crate_version};
 
 /// A simple Pomodoro timer for the command line
-#[derive(Clap)]
+#[derive(Parser)]
 #[clap(version = app_version())]
-#[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
-    #[clap(short, long, takes_value(false))]
+    #[clap(short, long)]
     verbose: bool,
     #[clap(subcommand)]
     subcmd: SubCommands,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum SubCommands {
     Pomodoro(PomodoroCommand),
     Break(BreakCommand),
@@ -25,13 +24,13 @@ enum SubCommands {
 }
 
 /// Work with a Pomodoro
-#[derive(Clap)]
+#[derive(Parser)]
 struct PomodoroCommand {
     #[clap(subcommand)]
     subcmd: PomodoroCommands,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum PomodoroCommands {
     Start(StartPomodoro),
     Interrupt(InterruptPomodoro),
@@ -39,7 +38,7 @@ enum PomodoroCommands {
 }
 
 /// Starts a Pomodoro
-#[derive(Clap)]
+#[derive(Parser)]
 struct StartPomodoro {
     /// How many minutes this Pomodoro should last
     #[clap(
@@ -47,38 +46,37 @@ struct StartPomodoro {
         long,
         required(false),
         default_value("25"),
-        takes_value(true),
         value_name("DURATION")
     )]
     duration: u8,
 }
 
 /// Finishes the active Pomodoro
-#[derive(Clap)]
+#[derive(Parser)]
 struct FinishPomodoro {}
 
 /// Marks the active Pomodoro as interrupted
-#[derive(Clap)]
+#[derive(Parser)]
 struct InterruptPomodoro {}
 
 /// Annotates a Pomodoro
-#[derive(Clap)]
+#[derive(Parser)]
 struct AnnotatePomodoro {}
 
 /// Work with a break
-#[derive(Clap)]
+#[derive(Parser)]
 struct BreakCommand {
     #[clap(subcommand)]
     subcmd: BreakCommands,
 }
 
-#[derive(Clap)]
+#[derive(Parser)]
 enum BreakCommands {
     Start(StartBreak),
 }
 
 /// Starts a break
-#[derive(Clap)]
+#[derive(Parser)]
 struct StartBreak {
     /// How many minutes this break should last
     #[clap(
@@ -86,7 +84,6 @@ struct StartBreak {
         long,
         required(false),
         default_value("5"),
-        takes_value(true),
         value_name("DURATION")
     )]
     duration: u8,
@@ -97,11 +94,11 @@ struct StartBreak {
 }
 
 /// Finishes the active Break
-#[derive(Clap)]
+#[derive(Parser)]
 struct FinishBreak {}
 
 /// Report status
-#[derive(Clap)]
+#[derive(Parser)]
 struct StatusCommand {}
 
 fn main() {

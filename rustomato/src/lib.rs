@@ -17,7 +17,7 @@ pub enum Kind {
 // Neither Pomodoro nor Break
 #[derive(Debug)]
 pub struct UnknownKind {
-    offender: String,
+    pub offender: String,
 }
 
 #[derive(Clone, Copy)]

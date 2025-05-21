@@ -6,7 +6,7 @@ mod acceptance_tests {
     #[test]
     fn plain() {
         let mut cmd = Command::cargo_bin("rustomato").unwrap();
-        cmd.assert().success();
+        cmd.assert().code(2);
     }
 
     #[test]
@@ -15,7 +15,7 @@ mod acceptance_tests {
 
         let assert = Command::cargo_bin("rustomato")
             .unwrap()
-            .env("RUSTOMATO_ROOT", rustomato_root.into_path())
+            .env("RUSTOMATO_ROOT", rustomato_root.keep())
             .arg("--verbose")
             .arg("status")
             .assert();

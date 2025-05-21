@@ -1,6 +1,6 @@
 [package]
 name = "rustomato"
-version = "0.0.7"
+version = "0.0.9"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
 edition = "2024"
 
