@@ -4,6 +4,9 @@ version = "0.0.9"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
 edition = "2024"
 build = "build.rs"
+description = "Rustomato is a simple Pomodoro timer for the command line"
+license = "MIT"
+repository = "https://github.com/suhlig/rustomato"
 
 [dependencies]
 ctrlc = "~3.0"
