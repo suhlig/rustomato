@@ -1,10 +1,10 @@
+use clap::{crate_version, Parser};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
 use std::path::*;
 use std::{env, process};
 use url::Url;
-use clap::{Parser, crate_version};
 
 /// A simple Pomodoro timer for the command line
 #[derive(Parser)]

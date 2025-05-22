@@ -131,9 +131,22 @@ impl ToSql for Kind {
 
 impl fmt::Display for Schedulable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use chrono::{Local, TimeZone};
+
+        fn format_timestamp(timestamp: u64) -> String {
+            if timestamp == 0 {
+                return "N/A".to_string();
+            }
+            Local
+                .timestamp_opt(timestamp as i64, 0)
+                .single()
+                .map(|dt| dt.format("%H:%M:%S").to_string())
+                .unwrap_or_else(|| timestamp.to_string())
+        }
+
         match self.status() {
             Status::New => {
-                write!(f, "{} ({} min)", self.kind, self.duration,)
+                write!(f, "{} ({} min)", self.kind, self.duration)
             }
             Status::Active => {
                 write!(
@@ -141,7 +154,7 @@ impl fmt::Display for Schedulable {
                     "{} {} is active since {}",
                     self.kind,
                     self.uuid,
-                    self.started_at // TODO print prettier timestamp
+                    format_timestamp(self.started_at)
                 )
             }
             Status::Stale => {
@@ -157,7 +170,7 @@ impl fmt::Display for Schedulable {
                     "{} {} was cancelled at {}",
                     self.kind,
                     self.uuid,
-                    self.cancelled_at // TODO print prettier timestamp
+                    format_timestamp(self.cancelled_at)
                 )
             }
             Status::Finished => {
@@ -166,7 +179,7 @@ impl fmt::Display for Schedulable {
                     "{} {} was finished at {}",
                     self.kind,
                     self.uuid,
-                    self.finished_at // TODO print prettier timestamp
+                    format_timestamp(self.finished_at)
                 )
             }
         }
