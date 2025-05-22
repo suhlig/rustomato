@@ -1,4 +1,4 @@
-use clap::{crate_version, Parser};
+use clap::{Parser, crate_version};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
@@ -170,7 +170,10 @@ fn main() {
                     }
                     Err(err) => {
                         match err {
-                            SchedulingError::AlreadyRunning(pid) => eprintln!("Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.", err, pid),
+                            SchedulingError::AlreadyRunning(pid) => eprintln!(
+                                "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
+                                err, pid
+                            ),
                             _ => eprintln!("Error: {}.", err),
                         }
                         process::exit(1);
@@ -213,7 +216,10 @@ fn main() {
                     }
                     Err(err) => {
                         match err {
-                            SchedulingError::AlreadyRunning(pid) => eprintln!("Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.", err, pid),
+                            SchedulingError::AlreadyRunning(pid) => eprintln!(
+                                "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
+                                err, pid
+                            ),
                             _ => eprintln!("Error: {}.", err),
                         }
                         process::exit(1);

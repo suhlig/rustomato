@@ -1,10 +1,10 @@
-use super::persistence::{PersistenceError, Repository};
 use super::Schedulable;
+use super::persistence::{PersistenceError, Repository};
 use pbr::ProgressBar;
 use std::fmt;
-use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::channel;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{thread, time::Duration, time::Instant};
 
@@ -41,7 +41,7 @@ impl Scheduler {
             Ok(v) => v,
             Err(e) => match e {
                 PersistenceError::AlreadyRunning(pid) => {
-                    return Err(SchedulingError::AlreadyRunning(pid))
+                    return Err(SchedulingError::AlreadyRunning(pid));
                 }
                 _ => return Err(SchedulingError::ExecutionError),
             },

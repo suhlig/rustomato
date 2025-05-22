@@ -1,9 +1,9 @@
 use super::{Kind, Schedulable, SqlUuid, Status};
 use refinery::embed_migrations;
-use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OpenFlags;
+use rusqlite::params;
 use std::fmt;
 use url::Url;
 

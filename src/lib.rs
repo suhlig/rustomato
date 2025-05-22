@@ -1,7 +1,7 @@
 use psutil::process::Process;
+use rusqlite::Result;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::types::{ToSql, ToSqlOutput};
-use rusqlite::Result;
 use std::fmt;
 use uuid::Uuid;
 
