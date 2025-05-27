@@ -1,15 +1,14 @@
-#!/bin/bash
+#!/usr/bin/env zsh
 
 set -euo pipefail
-IFS=$'\n\t'
 
-CONCOURSE_TARGET=uh
+CONCOURSE_TARGET=soda
 PIPELINE_NAME=rustomato
-SCRIPT_PATH=$(dirname "$(realpath -s "$0")")
+srcdir=${0:a:h}
 
 fly \
     --target "$CONCOURSE_TARGET" \
   set-pipeline \
     --pipeline="$PIPELINE_NAME" \
-    --config "$SCRIPT_PATH"/pipelines/release.yml \
-    --load-vars-from="${SCRIPT_PATH}/private-config.yml"
+    --config "$srcdir"/pipelines/release.yml \
+    --load-vars-from="$srcdir/private-config.yml"
