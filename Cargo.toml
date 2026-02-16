@@ -1,6 +1,6 @@
 [package]
 name = "rustomato"
-version = "0.0.9"
+version = "0.0.10"
 authors = ["Steffen Uhlig <steffen@familie-uhlig.net>"]
 edition = "2024"
 build = "build.rs"
@@ -11,17 +11,17 @@ repository = "https://github.com/suhlig/rustomato"
 [dependencies]
 ctrlc = "~3.0"
 uuid = { version = "~0.8", features = ["v4"] }
-rusqlite = { version = "~0.25.0", features = ["bundled"] }
-pbr = "1.0.3"
+rusqlite = { version = "~0.25.4", features = ["bundled"] }
+pbr = "1.1.1"
 refinery = { version = "~0.6", features = ["rusqlite"]}
 url = "~2.2.2"
 assert_matches = "1.5.0"
-psutil = "3.2.1"
+psutil = "3.3.0"
 clap = { version = "4", features = ["derive", "cargo"] }
 dirs = "3.0.2"
-assert_cmd = "2.0.1"
-tempfile = "3.2.0"
-predicates = "2.0.0"
+assert_cmd = "2.1.2"
+tempfile = "3.25.0"
+predicates = "2.1.5"
 chrono = "0.4"
 
 [[bin]]
@@ -29,4 +29,4 @@ name = "rustomato"
 path = "src/main.rs"
 
 [build-dependencies]
-built = { version = "0.5.1", features = ["git2"] }
+built = { version = "0.5.2", features = ["git2"] }
