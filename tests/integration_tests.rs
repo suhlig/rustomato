@@ -7,14 +7,14 @@ mod integration_tests {
     fn no_active() {
         let repo = Repository::new("file::memory:");
         let active = repo.active().expect("querying active");
-        assert_eq!(active.is_none(), true);
+        assert!(active.is_none());
     }
 
     #[test]
     fn save_new() {
         let repo = Repository::new("file::memory:");
         let result = repo.save(&Schedulable::new(4711, Kind::Pomodoro, 25));
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -25,7 +25,7 @@ mod integration_tests {
         repo.save(&pom).expect("saving active pomodoro");
 
         let active = repo.active().expect("querying active");
-        assert_eq!(active.is_some(), true);
+        assert!(active.is_some());
     }
 
     #[test]
@@ -35,12 +35,12 @@ mod integration_tests {
         pom.started_at = 12;
 
         let result = repo.save(&pom);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         // finish
         pom.finished_at = 13;
         let result = repo.save(&pom);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         match result {
             Ok(finished) => {
@@ -57,12 +57,12 @@ mod integration_tests {
         pom.started_at = 12;
 
         let result = repo.save(&pom);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         // cancel
         pom.cancelled_at = 14;
         let result = repo.save(&pom);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
 
         match result {
             Ok(finished) => assert_eq!(finished.cancelled_at, 14),
@@ -83,7 +83,7 @@ mod integration_tests {
         let mut second = Schedulable::new(4711, Kind::Break, 25);
         second.started_at = 14;
         let result = repo.save(&second);
-        assert_eq!(result.is_ok(), true);
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -96,7 +96,7 @@ mod integration_tests {
         let mut second = Schedulable::new(4711, Kind::Break, 25);
         second.started_at = 13;
         let result = repo.save(&second);
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
 
         match result {
             Ok(_) => panic!("Should have been covered above"),
@@ -113,7 +113,7 @@ mod integration_tests {
 
         pom.finished_at = 12;
         let result = repo.save(&pom);
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
 
         match result {
             Ok(_) => panic!("Should have been covered above"),

@@ -90,7 +90,7 @@ arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && cur
   - use `cargo watch -x test` for fast iteration
   - install the plugin with `cargo install cargo-watch`
 * Run the app: `cargo run -- pomodoro`
-* Build a release manually with `cargo build --release` (binary will be found in `target/release/`)
+* Run `pre-commit install` to install the pre-commit hook
 
 # TODO
 

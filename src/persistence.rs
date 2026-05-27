@@ -65,7 +65,7 @@ impl Repository {
     pub fn find_by_uuid(&self, uuid: SqlUuid) -> Result<Schedulable, PersistenceError> {
         let uuid_s = uuid.to_string();
 
-        return match self.db.query_row(
+        match self.db.query_row(
             "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at from schedulables where uuid=?1",
             params![uuid_s],
             |row| Ok(Schedulable {
@@ -79,7 +79,7 @@ impl Repository {
         })) {
             Ok(val) => Ok(val),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
-        };
+        }
     }
 
     pub fn today(&self) -> Result<Vec<Schedulable>, PersistenceError> {
@@ -153,7 +153,7 @@ impl Repository {
                                  None => return Err(PersistenceError::CannotSave(format!("{} could not be inseted as active, but there was no active Pomodoro or break found, either.", s))),
                              }
                          };
-                        return Err(PersistenceError::CannotSave(format!("{}", e)))
+                        Err(PersistenceError::CannotSave(format!("{}", e)))
                     }
                 }
             }
