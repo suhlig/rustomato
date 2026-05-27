@@ -41,6 +41,22 @@ Or, on a Mac:
 $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 ```
 
+# Installation
+
+| File | Architecture | Typical Hardware |
+|---|---|---|
+| `rustomato-linux-amd64.tar.gz` | x86_64 | Desktop PCs, laptops |
+| `rustomato-linux-arm64.tar.gz` | ARM 64-bit | Raspberry Pi 3/4/5 (64-bit OS) |
+| `rustomato-linux-armv7.tar.gz` | ARM 32-bit | Raspberry Pi 2/3/4/5 (32-bit OS) |
+| `rustomato-darwin-amd64.tar.gz` | x86_64 | Intel Macs |
+| `rustomato-darwin-arm64.tar.gz` | ARM 64-bit | Apple Silicon Macs |
+
+### Linux
+
+```sh
+arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && curl -sL "https://github.com/suhlig/rustomato/releases/latest/download/rustomato-linux-${arch}.tar.gz" | tar xz && sudo mv rustomato /usr/local/bin
+```
+
 # Release
 
 ## Releasing
