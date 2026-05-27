@@ -144,19 +144,6 @@ impl ToSql for Kind {
 
 impl fmt::Display for Schedulable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use chrono::{Local, TimeZone};
-
-        fn format_timestamp(timestamp: i64) -> String {
-            if timestamp == 0 {
-                return "N/A".to_string();
-            }
-            Local
-                .timestamp_opt(timestamp, 0)
-                .single()
-                .map(|dt| dt.format("%H:%M:%S").to_string())
-                .unwrap_or_else(|| timestamp.to_string())
-        }
-
         match self.status() {
             Status::New => {
                 write!(f, "{} ({} min)", self.kind, self.duration)
@@ -197,4 +184,17 @@ impl fmt::Display for Schedulable {
             }
         }
     }
+}
+
+pub fn format_timestamp(timestamp: i64) -> String {
+    use chrono::{Local, TimeZone};
+
+    if timestamp == 0 {
+        return "N/A".to_string();
+    }
+    Local
+        .timestamp_opt(timestamp, 0)
+        .single()
+        .map(|dt| dt.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| timestamp.to_string())
 }

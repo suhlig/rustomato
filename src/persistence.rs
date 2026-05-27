@@ -5,6 +5,7 @@ use rusqlite::OpenFlags;
 use rusqlite::params;
 use std::fmt;
 use url::Url;
+use uuid::Uuid;
 
 pub struct Repository {
     db: Connection,
@@ -79,6 +80,57 @@ impl Repository {
             Ok(val) => Ok(val),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
         };
+    }
+
+    pub fn today(&self) -> Result<Vec<Schedulable>, PersistenceError> {
+        use chrono::Local;
+
+        let today = Local::now();
+        let start_of_day = today
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .and_then(|dt| dt.and_local_timezone(Local).earliest())
+            .map(|dt| dt.timestamp())
+            .unwrap_or(0);
+        let end_of_day = today
+            .date_naive()
+            .and_hms_opt(23, 59, 59)
+            .and_then(|dt| dt.and_local_timezone(Local).earliest())
+            .map(|dt| dt.timestamp())
+            .unwrap_or(i64::MAX);
+
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at \
+             FROM schedulables \
+             WHERE started_at >= ?1 AND started_at <= ?2 \
+             ORDER BY started_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![start_of_day, end_of_day], |row| {
+                let uuid_str: String = row.get(0)?;
+                let kind_str: String = row.get(1)?;
+                Ok(Schedulable {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    kind: Kind::from(kind_str)
+                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
+                    pid: row.get(2).unwrap_or(0),
+                    duration: row.get(3).unwrap_or(0),
+                    started_at: row.get(4).unwrap_or(0),
+                    finished_at: row.get(5).unwrap_or(0),
+                    cancelled_at: row.get(6).unwrap_or(0),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
     }
 
     pub fn save(&self, s: &Schedulable) -> Result<Schedulable, PersistenceError> {
