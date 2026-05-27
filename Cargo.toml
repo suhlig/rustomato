@@ -27,5 +27,9 @@ chrono = "0.4"
 name = "rustomato"
 path = "src/main.rs"
 
+[package.metadata.release]
+publish = false
+pre-release-hook = ["sh", "-c", "git cliff --unreleased --tag v${NEW_VERSION} --prepend CHANGELOG.md && git add CHANGELOG.md"]
+
 [build-dependencies]
 built = { version = "0.8.1", features = ["git2"] }

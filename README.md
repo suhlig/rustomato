@@ -61,27 +61,27 @@ arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && cur
 
 ## Releasing
 
-> Requires [git-cliff](https://git-cliff.org) (e.g. `brew install git-cliff`)
+> Requires [git-cliff](https://git-cliff.org) (e.g. `brew install git-cliff`) and [cargo-release](https://github.com/crate-ci/cargo-release) (`cargo install cargo-release`)
 
-1. Generate a starting point for the next version:
+Cut a new release with a single command:
 
-   ```sh
-   git cliff --unreleased --bump --prepend CHANGELOG.md
-   ```
+```sh
+cargo release patch   # or `minor`, or `major`
+```
 
-1. Edit and then commit the updated `CHANGELOG.md`:
+This will:
+- Choose the next version by bumping the current one (`patch` → `0.0.11`, `minor` → `0.1.0`, …)
+- Run `git cliff` to prepend the new changelog entry to `CHANGELOG.md`
+- Bump the version in `Cargo.toml`
+- Commit both files together
+- Create a git tag (e.g. `v0.0.11`)
+- Push the commit and tag to GitHub, where `release.yml` builds and publishes the artifacts
 
-   ```sh
-   git add CHANGELOG.md && git commit -m "Prepare changelog for $(git cliff --bumped-version)"
-   ```
+To preview without making changes, add `--dry-run`:
 
-1. Push a tag to trigger the release workflow:
-
-   ```sh
-   version=$(git cliff --bumped-version)
-   git tag "$version"
-   git push origin "$version"
-   ```
+```sh
+cargo release patch --dry-run
+```
 
 # Development
 
