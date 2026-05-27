@@ -43,7 +43,29 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 
 # Release
 
-There is a Concourse pipeline in `ci`. It releases every tag. Note that this needs `git push --follow-tags`.
+## Releasing
+
+> Requires [git-cliff](https://git-cliff.org) (e.g. `brew install git-cliff`)
+
+1. Generate a starting point for the next version:
+
+   ```sh
+   git cliff --unreleased --bump --prepend CHANGELOG.md
+   ```
+
+1. Edit and then commit the updated `CHANGELOG.md`:
+
+   ```sh
+   git add CHANGELOG.md && git commit -m "Prepare changelog for $(git cliff --bumped-version)"
+   ```
+
+1. Push a tag to trigger the release workflow:
+
+   ```sh
+   version=$(git cliff --bumped-version)
+   git tag "$version"
+   git push origin "$version"
+   ```
 
 # Development
 
