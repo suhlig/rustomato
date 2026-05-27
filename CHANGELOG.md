@@ -20,6 +20,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Change release workflow to use GitHub actions
 - Use cargo-release again
 
+## [0.0.11] - 2026-05-27
+
+### Added
+
+- Address clippy findings
+
+### Changed
+
+- Fix pipeline
+- Update dependencies
+- Replace non-critical dependencies
+- Add journal command
+- Add changelog
+- Change release workflow to use GitHub actions
+- Use cargo-release again
+
 ## [0.0.10] - 2025-05-22
 
 ### Changed
