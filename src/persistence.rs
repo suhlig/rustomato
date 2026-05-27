@@ -1,5 +1,4 @@
 use super::{Kind, Schedulable, SqlUuid, Status};
-use refinery::embed_migrations;
 use rusqlite::Connection;
 use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OpenFlags;
@@ -32,15 +31,14 @@ impl fmt::Display for PersistenceError {
 
 impl Repository {
     pub fn new(location: &str) -> Self {
-        embed_migrations!("migrations");
-        let mut db = Connection::open_with_flags(
+        let db = Connection::open_with_flags(
             location,
             OpenFlags::SQLITE_OPEN_READ_WRITE
                 | OpenFlags::SQLITE_OPEN_CREATE
                 | OpenFlags::SQLITE_OPEN_URI,
         )
         .expect("opening database connection");
-        migrations::runner().run(&mut db).unwrap();
+        crate::migration::run(&db);
         Self { db }
     }
 

@@ -1,4 +1,4 @@
-CREATE TABLE schedulables_new (
+CREATE TABLE IF NOT EXISTS schedulables_new (
   uuid            TEXT NOT NULL PRIMARY KEY,
   kind            TEXT NOT NULL DEFAULT 'pomodoro',
   pid             INTEGER,
@@ -30,8 +30,7 @@ INSERT INTO schedulables_new SELECT * FROM schedulables;
 DROP TABLE schedulables;
 ALTER TABLE schedulables_new RENAME TO schedulables;
 
--- Only one row may have a non-NULL pid
-CREATE TRIGGER
+CREATE TRIGGER IF NOT EXISTS
   singularity_pid
 BEFORE INSERT ON
   schedulables
@@ -43,8 +42,7 @@ BEGIN
   END;
 END;
 
--- Only one schedulable may be in active state
-CREATE UNIQUE INDEX
+CREATE UNIQUE INDEX IF NOT EXISTS
   singularity_state
 ON
   schedulables(started_at)

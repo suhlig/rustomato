@@ -1,10 +1,10 @@
-use psutil::process::Process;
 use rusqlite::Result;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::types::{ToSql, ToSqlOutput};
 use std::fmt;
 use uuid::Uuid;
 
+pub mod migration;
 pub mod persistence;
 pub mod scheduling;
 
@@ -46,7 +46,7 @@ impl FromSql for SqlUuid {
 
 impl fmt::Display for SqlUuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.to_simple().to_string())
+        write!(f, "{}", self.0.simple())
     }
 }
 
@@ -54,10 +54,10 @@ pub struct Schedulable {
     pub pid: u32,
     pub kind: Kind,
     pub uuid: SqlUuid,
-    pub duration: u64, // TODO Use duration with a unit
-    pub started_at: u64,
-    pub finished_at: u64,
-    pub cancelled_at: u64,
+    pub duration: i64, // TODO Use duration with a unit
+    pub started_at: i64,
+    pub finished_at: i64,
+    pub cancelled_at: i64,
 }
 
 pub enum Status {
@@ -78,8 +78,20 @@ impl Kind {
     }
 }
 
+/// Returns true if the given PID exists on the system (cross-platform via POSIX kill(0)).
+fn pid_is_alive(pid: u32) -> bool {
+    unsafe {
+        if libc::kill(pid as i32, 0) == 0 {
+            true
+        } else {
+            // ESRCH means "no such process"; anything else (e.g. EPERM) means it exists.
+            std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+        }
+    }
+}
+
 impl Schedulable {
-    pub fn new(pid: u32, kind: Kind, duration: u64) -> Self {
+    pub fn new(pid: u32, kind: Kind, duration: i64) -> Self {
         Self {
             pid,
             kind,
@@ -97,9 +109,10 @@ impl Schedulable {
         } else if self.finished_at != 0 {
             Status::Finished
         } else if self.started_at != 0 {
-            match Process::new(self.pid) {
-                Ok(_) => Status::Active,
-                Err(_) => Status::Stale,
+            if pid_is_alive(self.pid) {
+                Status::Active
+            } else {
+                Status::Stale
             }
         } else {
             Status::New
@@ -133,12 +146,12 @@ impl fmt::Display for Schedulable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use chrono::{Local, TimeZone};
 
-        fn format_timestamp(timestamp: u64) -> String {
+        fn format_timestamp(timestamp: i64) -> String {
             if timestamp == 0 {
                 return "N/A".to_string();
             }
             Local
-                .timestamp_opt(timestamp as i64, 0)
+                .timestamp_opt(timestamp, 0)
                 .single()
                 .map(|dt| dt.format("%H:%M:%S").to_string())
                 .unwrap_or_else(|| timestamp.to_string())

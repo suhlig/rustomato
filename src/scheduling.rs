@@ -66,7 +66,7 @@ impl Scheduler {
     }
 }
 
-fn waiter(duration: u64) -> Receiver<bool> {
+fn waiter(duration: i64) -> Receiver<bool> {
     let (control_tx, control_rx) = channel();
     let (result_tx, result_rx) = channel::<bool>();
 
@@ -78,7 +78,7 @@ fn waiter(duration: u64) -> Receiver<bool> {
     .expect("Error setting Ctrl-C handler");
 
     // TODO Only if attached to a terminal
-    let mut pb = ProgressBar::new(60 * duration);
+    let mut pb = ProgressBar::new((60 * duration) as u64);
 
     pb.show_speed = false;
     pb.show_counter = false;
@@ -88,7 +88,7 @@ fn waiter(duration: u64) -> Receiver<bool> {
     thread::spawn({
         move || {
             let mut done = false;
-            let duration = Duration::new(60 * duration, 0);
+            let duration = Duration::new((60 * duration) as u64, 0);
             let start = Instant::now();
 
             while !done {
@@ -120,9 +120,9 @@ fn waiter(duration: u64) -> Receiver<bool> {
     result_rx
 }
 
-fn now() -> u64 {
+fn now() -> i64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(n) => n.as_secs(),
+        Ok(n) => n.as_secs() as i64,
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
 }
