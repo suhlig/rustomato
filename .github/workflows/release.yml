@@ -64,7 +64,22 @@ jobs:
             found { print }
           ' CHANGELOG.md > release-notes.md
 
+      - name: Compute SHA256
+        id: sha256
+        run: |
+          echo "darwin_arm64=$(sha256sum artifacts/rustomato-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
       - uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*.tar.gz
           body_path: release-notes.md
+
+      - name: Bump Homebrew Formula
+        uses: mislav/bump-homebrew-formula-action@v4.1
+        with:
+          formula-name: rustomato
+          homebrew-tap: suhlig/homebrew-tap
+          download-url: https://github.com/suhlig/rustomato/releases/download/${{ github.ref_name }}/rustomato-darwin-arm64.tar.gz
+          download-sha256: ${{ steps.sha256.outputs.darwin_arm64 }}
+        env:
+          COMMITTER_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
