@@ -1,7 +1,9 @@
-use clap::{Parser, crate_version};
+use clap::{CommandFactory, Parser, crate_version};
+use clap_complete::{Shell, generate};
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
+use std::io;
 use std::path::*;
 use std::{env, process};
 use url::Url;
@@ -22,6 +24,8 @@ enum SubCommands {
     Break(BreakCommand),
     Status(StatusCommand),
     Journal(JournalCommand),
+    #[clap(hide = true)]
+    Completions(CompletionsCommand),
 }
 
 /// Work with a Pomodoro
@@ -106,7 +110,29 @@ struct StatusCommand {}
 #[derive(Parser)]
 struct JournalCommand {}
 
+/// Generate shell completions
+#[derive(Parser)]
+struct CompletionsCommand {
+    /// The shell to generate completions for
+    #[clap(value_enum)]
+    shell: Shell,
+}
+
 fn main() {
+    let opts = Opts::parse();
+
+    // The completions subcommand doesn't need a database, so handle it early
+    if let SubCommands::Completions(completions_options) = &opts.subcmd {
+        let mut cmd = Opts::command();
+        generate(
+            completions_options.shell,
+            &mut cmd,
+            "rustomato",
+            &mut io::stdout(),
+        );
+        return;
+    }
+
     // TODO Use Clap's `env` option
     let root = match env::var("RUSTOMATO_ROOT") {
         Ok(val) => PathBuf::from(val),
@@ -122,7 +148,7 @@ fn main() {
         }
     };
 
-    let verbose = Opts::parse().verbose;
+    let verbose = opts.verbose;
 
     if verbose {
         println!("Using root {}", root.to_str().expect("converting"));
@@ -147,7 +173,7 @@ fn main() {
     let scheduler = Scheduler::new(repo);
     let pid = process::id();
 
-    match Opts::parse().subcmd {
+    match opts.subcmd {
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(start_pomodoro_options) => {
                 let pom =
@@ -278,6 +304,7 @@ fn main() {
                 }
             }
         },
+        SubCommands::Completions(_) => unreachable!(),
     }
 }
 

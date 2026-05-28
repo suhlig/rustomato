@@ -43,6 +43,16 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 
 # Installation
 
+### Homebrew
+
+```sh
+brew install suhlig/tap/rustomato
+```
+
+This formula automatically installs shell completions for bash, zsh, and fish.
+
+### Manual
+
 | File | Architecture | Typical Hardware |
 |---|---|---|
 | `rustomato-linux-amd64.tar.gz` | x86_64 | Desktop PCs, laptops |
@@ -51,7 +61,7 @@ $ rustomato pomodoro start && say "Pomodoro is over" || say "Pomodoro cancelled"
 | `rustomato-darwin-amd64.tar.gz` | x86_64 | Intel Macs |
 | `rustomato-darwin-arm64.tar.gz` | ARM 64-bit | Apple Silicon Macs |
 
-### Linux
+**Linux**
 
 ```sh
 arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && curl -sL "https://github.com/suhlig/rustomato/releases/latest/download/rustomato-linux-${arch}.tar.gz" | tar xz && sudo mv rustomato /usr/local/bin
@@ -94,6 +104,7 @@ cargo release patch --dry-run
 
 # TODO
 
+* Hooks (incl. env vars; do some research)
 * Auto-update dependencies via PRs
 * `stats` command
 * `--force`
