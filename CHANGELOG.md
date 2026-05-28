@@ -26,6 +26,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Update TODOs
 - Bump Homebrew formula on release
 
+## [0.1.0] - 2026-05-28
+
+### Added
+
+- Add completions
+
+### Changed
+
+- Update TODOs
+- Bump Homebrew formula on release
+
 ## [0.0.12] - 2026-05-27
 
 ### Changed
