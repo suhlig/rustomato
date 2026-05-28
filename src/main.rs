@@ -1,5 +1,6 @@
 use clap::{CommandFactory, Parser, crate_version};
 use clap_complete::{Shell, generate};
+use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
 use rustomato::{Kind, Schedulable, Status};
@@ -14,12 +15,19 @@ use url::Url;
 struct Opts {
     #[clap(short, long)]
     verbose: bool,
+
+    /// Disable hook execution
+    #[clap(long)]
+    no_hooks: bool,
+
     #[clap(subcommand)]
     subcmd: SubCommands,
 }
 
 #[derive(Parser)]
 enum SubCommands {
+    /// Initialize the rustomato root directory with sample hooks
+    Init(InitCommand),
     Pomodoro(PomodoroCommand),
     Break(BreakCommand),
     Status(StatusCommand),
@@ -27,6 +35,10 @@ enum SubCommands {
     #[clap(hide = true)]
     Completions(CompletionsCommand),
 }
+
+/// Initialize rustomato
+#[derive(Parser)]
+struct InitCommand {}
 
 /// Work with a Pomodoro
 #[derive(Parser)]
@@ -154,14 +166,32 @@ fn main() {
         println!("Using root {}", root.to_str().expect("converting"));
     }
 
+    // Handle init early — no database needed.
+    if let SubCommands::Init(_) = &opts.subcmd {
+        match hooks::init(&root) {
+            Ok(()) => {
+                println!(
+                    "Initialized rustomato in {}",
+                    root.to_str().expect("converting")
+                );
+                println!(
+                    "Sample hooks created in {}/hooks",
+                    root.to_str().expect("converting")
+                );
+            }
+            Err(e) => {
+                eprintln!("Error: failed to initialize rustomato: {}", e);
+                process::exit(1);
+            }
+        }
+        return;
+    }
+
     let db_url = match env::var("RUSTOMATO_DATABASE_URL") {
         Ok(val) => Url::parse(&val).expect("parsing the database URL"),
         Err(_) => {
-            let base = Url::parse("file://").expect("parsing the base URL");
-            let with_dir = base
-                .join(root.to_str().expect("converting root to string"))
-                .expect("appending the root directory");
-            with_dir.join("data.db").expect("parsing the database URL")
+            let db_path = root.join("data.db");
+            Url::from_file_path(&db_path).expect("converting database path to URL")
         }
     };
 
@@ -170,10 +200,11 @@ fn main() {
     }
 
     let repo = Repository::from_url(&db_url);
-    let scheduler = Scheduler::new(repo);
+    let scheduler = Scheduler::new(repo, root, verbose, opts.no_hooks);
     let pid = process::id();
 
     match opts.subcmd {
+        SubCommands::Init(_) => unreachable!(), // handled above
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(start_pomodoro_options) => {
                 let pom =
@@ -205,6 +236,10 @@ fn main() {
                                 "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
                                 err, pid
                             ),
+                            SchedulingError::HookRejected => {
+                                // Error message already printed by the scheduler
+                                process::exit(1);
+                            }
                             _ => eprintln!("Error: {}.", err),
                         }
                         process::exit(1);
@@ -297,6 +332,9 @@ fn main() {
                                 "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
                                 err, pid
                             ),
+                            SchedulingError::HookRejected => {
+                                process::exit(1);
+                            }
                             _ => eprintln!("Error: {}.", err),
                         }
                         process::exit(1);

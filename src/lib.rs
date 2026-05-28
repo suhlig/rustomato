@@ -4,11 +4,12 @@ use rusqlite::types::{ToSql, ToSqlOutput};
 use std::fmt;
 use uuid::Uuid;
 
+pub mod hooks;
 pub mod migration;
 pub mod persistence;
 pub mod scheduling;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Kind {
     Pomodoro,
     Break,
@@ -20,7 +21,7 @@ pub struct UnknownKind {
     pub offender: String,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct SqlUuid(Uuid);
 
 impl Default for SqlUuid {
@@ -50,6 +51,7 @@ impl fmt::Display for SqlUuid {
     }
 }
 
+#[derive(Debug)]
 pub struct Schedulable {
     pub pid: u32,
     pub kind: Kind,
