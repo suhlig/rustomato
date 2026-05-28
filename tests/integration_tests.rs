@@ -1,7 +1,7 @@
 mod integration_tests {
     use assert_matches::assert_matches;
     use rustomato::persistence::{PersistenceError, Repository};
-    use rustomato::{Kind, Schedulable, SqlUuid};
+    use rustomato::{Annotation, Kind, Schedulable, SqlUuid};
 
     #[test]
     fn no_active() {
@@ -250,5 +250,179 @@ mod integration_tests {
 
         let entries = repo.today().expect("querying today");
         assert_eq!(entries.len(), 2);
+    }
+
+    // --- save_annotation -------------------------------------------------------
+
+    #[test]
+    fn save_annotation() {
+        let repo = Repository::new("file::memory:");
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active pomodoro");
+        pom.finished_at = 1001;
+        let saved = repo.save(&pom).expect("saving finished pomodoro");
+
+        let annotation = Annotation {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            body: "test annotation".to_string(),
+            created_at: 1002,
+        };
+        repo.save_annotation(&annotation)
+            .expect("saving annotation");
+
+        let found = repo
+            .find_annotation_by_uuid(annotation.uuid)
+            .expect("finding annotation");
+        assert_eq!(found.body, "test annotation");
+        assert_eq!(found.schedulable_uuid.to_string(), saved.uuid.to_string());
+    }
+
+    #[test]
+    fn save_annotation_twice_for_same_schedulable() {
+        let repo = Repository::new("file::memory:");
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active pomodoro");
+        pom.finished_at = 1001;
+        let saved = repo.save(&pom).expect("saving finished pomodoro");
+
+        let annotation1 = Annotation {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            body: "first annotation".to_string(),
+            created_at: 1002,
+        };
+        repo.save_annotation(&annotation1)
+            .expect("saving first annotation");
+
+        let annotation2 = Annotation {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            body: "second annotation".to_string(),
+            created_at: 1003,
+        };
+        repo.save_annotation(&annotation2)
+            .expect("saving second annotation");
+
+        let annotations = repo
+            .annotations_for(saved.uuid)
+            .expect("querying annotations");
+        assert_eq!(annotations.len(), 2);
+        assert_eq!(annotations[0].body, "first annotation");
+        assert_eq!(annotations[1].body, "second annotation");
+    }
+
+    #[test]
+    fn annotations_for_nonexistent() {
+        let repo = Repository::new("file::memory:");
+        let dummy = SqlUuid::default();
+        let annotations = repo.annotations_for(dummy).expect("querying annotations");
+        assert!(annotations.is_empty());
+    }
+
+    // --- most_recently_ended ---------------------------------------------------
+
+    #[test]
+    fn most_recently_ended_none() {
+        let repo = Repository::new("file::memory:");
+        let result = repo.most_recently_ended().expect("querying");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn most_recently_ended_finished() {
+        let repo = Repository::new("file::memory:");
+
+        let mut brk = Schedulable::new(42, Kind::Break, 5);
+        brk.started_at = 10;
+        repo.save(&brk).expect("saving break");
+        brk.finished_at = 15;
+        repo.save(&brk).expect("finishing break");
+
+        let mut pom = Schedulable::new(43, Kind::Pomodoro, 25);
+        pom.started_at = 20;
+        repo.save(&pom).expect("saving pomodoro");
+        pom.finished_at = 30;
+        repo.save(&pom).expect("finishing pomodoro");
+
+        let result = repo
+            .most_recently_ended()
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.finished_at, 30);
+        assert_eq!(result.kind, Kind::Pomodoro);
+    }
+
+    #[test]
+    fn most_recently_ended_cancelled() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 100;
+        repo.save(&pom).expect("saving pomodoro");
+        pom.finished_at = 110;
+        repo.save(&pom).expect("finishing pomodoro");
+
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 120;
+        repo.save(&brk).expect("saving break");
+        brk.cancelled_at = 125;
+        repo.save(&brk).expect("cancelling break");
+
+        let result = repo
+            .most_recently_ended()
+            .expect("querying")
+            .expect("should find one");
+        // The cancelled break has cancelled_at=125, the finished pomodoro has finished_at=110
+        // So the break should be returned since 125 > 110
+        assert_eq!(result.cancelled_at, 125);
+        assert_eq!(result.kind, Kind::Break);
+    }
+
+    #[test]
+    fn most_recently_ended_ignores_active() {
+        let repo = Repository::new("file::memory:");
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active pomodoro");
+
+        let result = repo.most_recently_ended().expect("querying");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn most_recently_ended_mixed_kinds() {
+        let repo = Repository::new("file::memory:");
+
+        // Finished pomodoro at t=10
+        let mut pom1 = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom1.started_at = 5;
+        repo.save(&pom1).expect("saving pom1");
+        pom1.finished_at = 10;
+        repo.save(&pom1).expect("finishing pom1");
+
+        // Cancelled break at t=20
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 15;
+        repo.save(&brk).expect("saving break");
+        brk.cancelled_at = 20;
+        repo.save(&brk).expect("cancelling break");
+
+        // Finished pomodoro at t=30
+        let mut pom2 = Schedulable::new(44, Kind::Pomodoro, 25);
+        pom2.started_at = 25;
+        repo.save(&pom2).expect("saving pom2");
+        pom2.finished_at = 30;
+        repo.save(&pom2).expect("finishing pom2");
+
+        let result = repo
+            .most_recently_ended()
+            .expect("querying")
+            .expect("should find one");
+        // The most recent is pom2 with finished_at=30
+        assert_eq!(result.finished_at, 30);
+        assert_eq!(result.kind, Kind::Pomodoro);
     }
 }

@@ -41,6 +41,8 @@ pub enum HookEvent {
     AfterInterruptPomodoro,
     BeforeAnnotatePomodoro,
     AfterAnnotatePomodoro,
+    BeforeAnnotateBreak,
+    AfterAnnotateBreak,
     BeforeStartBreak,
     AfterStartBreak,
     BeforeFinishBreak,
@@ -61,6 +63,8 @@ impl HookEvent {
             HookEvent::AfterInterruptPomodoro => "after-interrupt-pomodoro",
             HookEvent::BeforeAnnotatePomodoro => "before-annotate-pomodoro",
             HookEvent::AfterAnnotatePomodoro => "after-annotate-pomodoro",
+            HookEvent::BeforeAnnotateBreak => "before-annotate-break",
+            HookEvent::AfterAnnotateBreak => "after-annotate-break",
             HookEvent::BeforeStartBreak => "before-start-break",
             HookEvent::AfterStartBreak => "after-start-break",
             HookEvent::BeforeFinishBreak => "before-finish-break",
@@ -80,6 +84,8 @@ impl HookEvent {
         "after-interrupt-pomodoro",
         "before-annotate-pomodoro",
         "after-annotate-pomodoro",
+        "before-annotate-break",
+        "after-annotate-break",
         "before-start-break",
         "after-start-break",
         "before-finish-break",
@@ -104,6 +110,7 @@ pub struct HookContext {
     pub cancelled_at: Option<i64>,
     pub interruptions: i64,
     pub interrupt_kind: Option<String>,
+    pub annotation: Option<String>,
     pub verbose: bool,
 }
 
@@ -127,6 +134,7 @@ impl HookContext {
             },
             interruptions: s.interruptions,
             interrupt_kind: None,
+            annotation: None,
             verbose,
         }
     }
@@ -229,6 +237,10 @@ fn execute_hook(
     if let Some(ref interrupt_kind) = context.interrupt_kind {
         cmd.env("RUSTOMATO_INTERRUPT_KIND", interrupt_kind);
         cmd.env("RUSTOMATO_INTERRUPTIONS", context.interruptions.to_string());
+    }
+
+    if let Some(ref annotation) = context.annotation {
+        cmd.env("RUSTOMATO_ANNOTATION", annotation);
     }
 
     // Pass the hook name as the first argument ($1).
@@ -346,6 +358,7 @@ mod tests {
             cancelled_at: None,
             interruptions: 0,
             interrupt_kind: None,
+            annotation: None,
             verbose: false,
         }
     }

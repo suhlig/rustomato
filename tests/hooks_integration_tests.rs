@@ -360,4 +360,172 @@ mod hooks_integration {
         let trimmed = got.trim();
         assert_eq!(trimmed, "external:1");
     }
+
+    // --- annotate -----------------------------------------------------------
+
+    #[test]
+    fn annotate_active_pomodoro() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        let annotation = sched.annotate("hello world").unwrap();
+        assert_eq!(annotation.body, "hello world");
+
+        let found = sched
+            .repo()
+            .find_annotation_by_uuid(annotation.uuid)
+            .unwrap();
+        assert_eq!(found.body, "hello world");
+    }
+
+    #[test]
+    fn annotate_most_recently_ended() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving pomodoro");
+        pom.finished_at = 2000;
+        sched.repo().save(&pom).expect("finishing pomodoro");
+
+        let annotation = sched.annotate("late note").unwrap();
+        assert_eq!(annotation.body, "late note");
+    }
+
+    #[test]
+    fn annotate_nothing_available_returns_error() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let result = sched.annotate("nothing");
+        assert_matches!(result, Err(SchedulingError::NothingToAnnotate));
+    }
+
+    #[test]
+    fn annotate_break() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let mut brk = Schedulable::new(process::id(), Kind::Break, 5);
+        brk.started_at = 1000;
+        sched.repo().save(&brk).expect("saving active break");
+
+        let annotation = sched.annotate("break annotation").unwrap();
+        assert_eq!(annotation.body, "break annotation");
+    }
+
+    #[test]
+    fn before_annotate_pomodoro_hook_aborts_on_nonzero_exit() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "before-annotate-pomodoro",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        let result = sched.annotate("hello");
+        assert_matches!(result, Err(SchedulingError::HookRejected));
+    }
+
+    #[test]
+    fn after_annotate_pomodoro_hook_failure_is_not_fatal() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "after-annotate-pomodoro",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        let annotation = sched.annotate("persist despite failure").unwrap();
+        let found = sched
+            .repo()
+            .find_annotation_by_uuid(annotation.uuid)
+            .unwrap();
+        assert_eq!(found.body, "persist despite failure");
+    }
+
+    #[test]
+    fn annotate_receives_annotation_env() {
+        let dir = tempdir().unwrap();
+        let out = dir.path().join("result");
+
+        setup_hook(
+            dir.path(),
+            "after-annotate-pomodoro",
+            &format!(
+                "#!/usr/bin/env sh\necho \"$RUSTOMATO_ANNOTATION\" > {}\n",
+                out.display()
+            ),
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        sched.annotate("test annotation").unwrap();
+
+        let got = std::fs::read_to_string(&out).unwrap();
+        assert_eq!(got.trim(), "test annotation");
+    }
+
+    #[test]
+    fn before_annotate_break_hook_aborts_on_nonzero_exit() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "before-annotate-break",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut brk = Schedulable::new(process::id(), Kind::Break, 5);
+        brk.started_at = 1000;
+        sched.repo().save(&brk).expect("saving active break");
+
+        let result = sched.annotate("hello");
+        assert_matches!(result, Err(SchedulingError::HookRejected));
+    }
+
+    #[test]
+    fn after_annotate_break_hook_failure_is_not_fatal() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "after-annotate-break",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut brk = Schedulable::new(process::id(), Kind::Break, 5);
+        brk.started_at = 1000;
+        sched.repo().save(&brk).expect("saving active break");
+
+        let annotation = sched.annotate("still saved").unwrap();
+        let found = sched
+            .repo()
+            .find_annotation_by_uuid(annotation.uuid)
+            .unwrap();
+        assert_eq!(found.body, "still saved");
+    }
 }

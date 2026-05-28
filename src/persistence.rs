@@ -1,4 +1,4 @@
-use super::{Kind, Schedulable, SqlUuid, Status};
+use super::{Annotation, Kind, Schedulable, SqlUuid, Status};
 use rusqlite::Connection;
 use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OpenFlags;
@@ -151,6 +151,112 @@ impl Repository {
             ))),
             Err(e) => Err(PersistenceError::CannotUpdate(format!("{}", e))),
         }
+    }
+
+    /// Find the most recently ended schedulable (finished or cancelled) of any kind.
+    pub fn most_recently_ended(&self) -> Result<Option<Schedulable>, PersistenceError> {
+        match self.db.query_row(
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             WHERE finished_at IS NOT NULL OR cancelled_at IS NOT NULL \
+             ORDER BY COALESCE(finished_at, cancelled_at) DESC \
+             LIMIT 1",
+            [],
+            |row| {
+                let uuid_str: String = row.get(0)?;
+                let kind_str: String = row.get(1)?;
+                Ok(Schedulable {
+                    uuid: SqlUuid(
+                        Uuid::parse_str(&uuid_str).expect("parsing UUID from database"),
+                    ),
+                    kind: Kind::from(kind_str)
+                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
+                    pid: row.get(2).unwrap_or(0),
+                    duration: row.get(3).unwrap_or(0),
+                    started_at: row.get(4).unwrap_or(0),
+                    finished_at: row.get(5).unwrap_or(0),
+                    cancelled_at: row.get(6).unwrap_or(0),
+                    interruptions: row.get(7).unwrap_or(0),
+                })
+            },
+        ) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
+    pub fn save_annotation(&self, annotation: &Annotation) -> Result<Annotation, PersistenceError> {
+        let uuid = annotation.uuid.to_string();
+        let schedulable_uuid = annotation.schedulable_uuid.to_string();
+
+        match self.db.execute(
+            "INSERT INTO annotations (uuid, schedulable_uuid, body, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![uuid, schedulable_uuid, annotation.body, annotation.created_at],
+        ) {
+            Ok(_) => Ok(Annotation {
+                uuid: annotation.uuid,
+                schedulable_uuid: annotation.schedulable_uuid,
+                body: annotation.body.clone(),
+                created_at: annotation.created_at,
+            }),
+            Err(e) => Err(PersistenceError::CannotSave(format!("{}", e))),
+        }
+    }
+
+    pub fn find_annotation_by_uuid(&self, uuid: SqlUuid) -> Result<Annotation, PersistenceError> {
+        let uuid_s = uuid.to_string();
+
+        match self.db.query_row(
+            "SELECT uuid, schedulable_uuid, body, created_at FROM annotations WHERE uuid=?1",
+            params![uuid_s],
+            |row| {
+                let uuid_str: String = row.get(0)?;
+                let sched_uuid_str: String = row.get(1)?;
+                Ok(Annotation {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+                    body: row.get(2).expect("unable to fetch body"),
+                    created_at: row.get(3).expect("unable to fetch created_at"),
+                })
+            },
+        ) {
+            Ok(val) => Ok(val),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
+    pub fn annotations_for(
+        &self,
+        schedulable_uuid: SqlUuid,
+    ) -> Result<Vec<Annotation>, PersistenceError> {
+        let uuid_s = schedulable_uuid.to_string();
+
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, schedulable_uuid, body, created_at FROM annotations WHERE schedulable_uuid=?1 ORDER BY created_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![uuid_s], |row| {
+                let uuid_str: String = row.get(0)?;
+                let sched_uuid_str: String = row.get(1)?;
+                Ok(Annotation {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+                    body: row.get(2).expect("unable to fetch body"),
+                    created_at: row.get(3).expect("unable to fetch created_at"),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
     }
 
     /// Find the most recently finished pomodoro across all time.

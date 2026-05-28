@@ -82,7 +82,10 @@ struct InterruptPomodoro {
 
 /// Annotates a Pomodoro
 #[derive(Parser)]
-struct AnnotatePomodoro {}
+struct AnnotatePomodoro {
+    /// The annotation text. Reads from STDIN if not provided.
+    words: Vec<String>,
+}
 
 /// Work with a break
 #[derive(Parser)]
@@ -94,6 +97,7 @@ struct BreakCommand {
 #[derive(Parser)]
 enum BreakCommands {
     Start(StartBreak),
+    Annotate(AnnotateBreak),
 }
 
 /// Starts a break
@@ -112,6 +116,13 @@ struct StartBreak {
     /// Cancel whatever may currently be running before starting the break
     #[clap(short, long)]
     force: bool,
+}
+
+/// Annotates a Break
+#[derive(Parser)]
+struct AnnotateBreak {
+    /// The annotation text. Reads from STDIN if not provided.
+    words: Vec<String>,
 }
 
 /// Finishes the active Break
@@ -272,8 +283,28 @@ fn main() {
                     }
                 }
             }
-            PomodoroCommands::Annotate(_) => {
-                eprintln!("TODO Annotating the active Pomodoro");
+            PomodoroCommands::Annotate(annotate_options) => {
+                let text = annotation_text(&annotate_options.words);
+                if text.is_empty() {
+                    eprintln!("Error: annotation text is empty.");
+                    process::exit(1);
+                }
+
+                if verbose {
+                    println!("Annotating with '{}'", text);
+                }
+
+                match scheduler.annotate(&text) {
+                    Ok(annotation) => {
+                        if verbose {
+                            println!("Annotated {}", annotation.body);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Error: {}.", err);
+                        process::exit(1);
+                    }
+                }
             }
         },
         SubCommands::Status(_) => {
@@ -374,8 +405,46 @@ fn main() {
                     }
                 }
             }
+            BreakCommands::Annotate(annotate_options) => {
+                let text = annotation_text(&annotate_options.words);
+                if text.is_empty() {
+                    eprintln!("Error: annotation text is empty.");
+                    process::exit(1);
+                }
+
+                if verbose {
+                    println!("Annotating with '{}'", text);
+                }
+
+                match scheduler.annotate(&text) {
+                    Ok(annotation) => {
+                        if verbose {
+                            println!("Annotated {}", annotation.body);
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Error: {}.", err);
+                        process::exit(1);
+                    }
+                }
+            }
         },
         SubCommands::Completions(_) => unreachable!(),
+    };
+}
+
+/// Read annotation text from positional args or stdin.
+fn annotation_text(words: &[String]) -> String {
+    if !words.is_empty() {
+        words.join(" ")
+    } else {
+        use std::io::Read;
+        let mut input = String::new();
+        std::io::stdin()
+            .lock()
+            .read_to_string(&mut input)
+            .unwrap_or_default();
+        input.trim().to_string()
     }
 }
 

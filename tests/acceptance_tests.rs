@@ -369,4 +369,161 @@ mod acceptance_tests {
             .success()
             .stdout(predicate::str::contains("1 interruption"));
     }
+
+    // --- annotate ----------------------------------------------------------
+
+    #[test]
+    fn annotate_nothing_at_all_fails() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("some")
+            .arg("words")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "nothing active or previously done to annotate",
+            ));
+    }
+
+    #[test]
+    fn annotate_active_pomodoro() {
+        let dir = tempdir().unwrap();
+
+        // Seed an active pomodoro directly into the database
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving active pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("my")
+            .arg("annotation")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn annotate_break() {
+        let dir = tempdir().unwrap();
+
+        // Seed an active break directly into the database
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut b = Schedulable::new(process::id(), Kind::Break, 5);
+            b.started_at = 1000;
+            repo.save(&b).expect("saving active break");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("annotate")
+            .arg("break")
+            .arg("note")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn annotate_fallback_to_most_recently_ended() {
+        let dir = tempdir().unwrap();
+
+        // Seed a finished pomodoro: first save as active, then finish it
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            let pom = repo.save(&pom).expect("saving active pomodoro");
+            let mut pom = repo.find_by_uuid(pom.uuid).unwrap();
+            pom.finished_at = 2000;
+            repo.save(&pom).expect("finishing pomodoro");
+        }
+
+        // No active pomodoro, so it should fall back to the most recently ended
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("note")
+            .arg("on")
+            .arg("finished")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn annotate_empty_fails() {
+        let dir = tempdir().unwrap();
+
+        // Seed an active pomodoro
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving active pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("annotation text is empty"));
+    }
+
+    #[test]
+    fn annotate_break_empty_fails() {
+        let dir = tempdir().unwrap();
+
+        // Seed an active break
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut b = Schedulable::new(process::id(), Kind::Break, 5);
+            b.started_at = 1000;
+            repo.save(&b).expect("saving active break");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("annotate")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("annotation text is empty"));
+    }
 }

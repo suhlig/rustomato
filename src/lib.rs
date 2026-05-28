@@ -9,6 +9,14 @@ pub mod migration;
 pub mod persistence;
 pub mod scheduling;
 
+#[derive(Debug)]
+pub struct Annotation {
+    pub uuid: SqlUuid,
+    pub schedulable_uuid: SqlUuid,
+    pub body: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
     Pomodoro,

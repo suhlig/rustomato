@@ -6,6 +6,7 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 $ rustomato pomodoro [start]                   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
 $ rustomato pomodoro interrupt                 # Records an interruption on the active (or most recently finished) Pomodoro.
 $ rustomato pomodoro interrupt --kind external # Records an external interruption on the active (or most recently finished) Pomodoro.
+$ rustomato pomodoro annotate <text>           # Annotates the active Pomodoro with the given text.
 $ rustomato break [start]                      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 ```
 [1] the running, if there is one, or the most recently completed, or the given
@@ -231,11 +232,6 @@ cargo release patch --dry-run
 # TODO
 
 * Auto-update dependencies via PRs
-* `rustomato pomodoro annotate [WORDS]` adds an annotation to
-  - the currently running `rustomato` process,
-  - if no process or a break is currently running, amend the most recent pomodoro, or the one given with `--pomodoro UUID`
-  - needs `annotations` table, joined onto `schedulables`
-  - if no `WORDS` are given, they are taked from `STDIN`
 * `rustomato pomodoro log` logs a finished pomodoro that was completed externally
 * `rustomato stats` command
 * Add `--force` flag to commands

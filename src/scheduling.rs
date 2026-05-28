@@ -1,6 +1,6 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
-use super::{InterruptionKind, Kind, Schedulable};
+use super::{Annotation, InterruptionKind, Kind, Schedulable, SqlUuid};
 use pbr::ProgressBar;
 use std::fmt;
 use std::path::PathBuf;
@@ -38,6 +38,7 @@ pub enum SchedulingError {
     HookRejected,
     NoActiveSchedulable,
     NoFinishedPomodoro,
+    NothingToAnnotate,
 }
 
 impl fmt::Display for SchedulingError {
@@ -58,6 +59,9 @@ impl fmt::Display for SchedulingError {
                     f,
                     "a break is active but there is no finished pomodoro to interrupt"
                 )
+            }
+            SchedulingError::NothingToAnnotate => {
+                write!(f, "nothing active or previously done to annotate")
             }
         }
     }
@@ -117,11 +121,6 @@ impl Scheduler {
         }
     }
 
-    /// Access the underlying repository (used in tests).
-    pub fn repo(&self) -> &Repository {
-        &self.repo
-    }
-
     /// Record an interruption on the active pomodoro, or on the most recently finished
     /// pomodoro if a break is active.
     pub fn interrupt(&self, kind: InterruptionKind) -> Result<Schedulable, SchedulingError> {
@@ -155,6 +154,70 @@ impl Scheduler {
         self.run_hook_after_with_interrupt_kind(HookEvent::AfterInterruptPomodoro, &updated, &kind);
 
         Ok(updated)
+    }
+
+    /// Access the underlying repository (used in tests).
+    pub fn repo(&self) -> &Repository {
+        &self.repo
+    }
+
+    /// Annotate the active schedulable, or the most recently ended one.
+    pub fn annotate(&self, text: &str) -> Result<Annotation, SchedulingError> {
+        let active = self
+            .repo
+            .active()
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        let target = match active {
+            Some(s) => s,
+            None => {
+                // Nothing active — annotate the most recently ended
+                self.repo
+                    .most_recently_ended()
+                    .map_err(|_| SchedulingError::ExecutionError)?
+                    .ok_or(SchedulingError::NothingToAnnotate)?
+            }
+        };
+
+        // Build hook context with annotation text
+        let mut ctx = HookContext::from_schedulable(&self.root, &target, self.verbose);
+        ctx.annotation = Some(text.to_string());
+
+        let before_event = match target.kind {
+            Kind::Pomodoro => HookEvent::BeforeAnnotatePomodoro,
+            Kind::Break => HookEvent::BeforeAnnotateBreak,
+        };
+
+        hooks::run_hook(before_event, &ctx, self.no_hooks).map_err(|e| {
+            eprintln!("Error: Hook {} failed: {}", before_event, e);
+            SchedulingError::HookRejected
+        })?;
+
+        // Save the annotation
+        let annotation = Annotation {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: target.uuid,
+            body: text.to_string(),
+            created_at: now(),
+        };
+        let saved = self
+            .repo
+            .save_annotation(&annotation)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        // Run after hook
+        let after_event = match target.kind {
+            Kind::Pomodoro => HookEvent::AfterAnnotatePomodoro,
+            Kind::Break => HookEvent::AfterAnnotateBreak,
+        };
+        ctx.annotation = Some(text.to_string());
+        if let Err(e) = hooks::run_hook(after_event, &ctx, self.no_hooks)
+            && self.verbose
+        {
+            eprintln!("Warning: after-hook {} reported: {}", after_event, e);
+        }
+
+        Ok(saved)
     }
 
     pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
