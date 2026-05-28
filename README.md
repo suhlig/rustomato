@@ -94,6 +94,8 @@ cargo release patch --dry-run
 
 # TODO
 
+* Auto-update dependencies via PRs
+* `stats` command
 * `--force`
 * `rustomato pomodoro annotate [WORDS]` adds an annotation to
   - the currently running `rustomato` process,
@@ -103,5 +105,3 @@ cargo release patch --dry-run
 * `rustomato pomodoro interrupt --external | --internal` marks the currently running Pomodoro as interrupted
   - technically, an interrupt is an annotation that is of kind `external-interrupt` or `internal-interrupt`
 * Show progress bar only when attached to a terminal
-* Use [cargo release](https://github.com/crate-ci/cargo-release) or, at least, manually verify that the git tag is the same as `cargo metadata --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.targets[].kind[] | contains("bin")) | .version'`
-*
