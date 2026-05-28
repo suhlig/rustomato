@@ -102,6 +102,8 @@ pub struct HookContext {
     pub started_at: i64,
     pub finished_at: Option<i64>,
     pub cancelled_at: Option<i64>,
+    pub interruptions: i64,
+    pub interrupt_kind: Option<String>,
     pub verbose: bool,
 }
 
@@ -123,6 +125,8 @@ impl HookContext {
             } else {
                 None
             },
+            interruptions: s.interruptions,
+            interrupt_kind: None,
             verbose,
         }
     }
@@ -221,6 +225,10 @@ fn execute_hook(
     }
     if let Some(cancelled_at) = context.cancelled_at {
         cmd.env("RUSTOMATO_CANCELLED_AT", cancelled_at.to_string());
+    }
+    if let Some(ref interrupt_kind) = context.interrupt_kind {
+        cmd.env("RUSTOMATO_INTERRUPT_KIND", interrupt_kind);
+        cmd.env("RUSTOMATO_INTERRUPTIONS", context.interruptions.to_string());
     }
 
     // Pass the hook name as the first argument ($1).
@@ -336,6 +344,8 @@ mod tests {
             started_at: 1000,
             finished_at: None,
             cancelled_at: None,
+            interruptions: 0,
+            interrupt_kind: None,
             verbose: false,
         }
     }

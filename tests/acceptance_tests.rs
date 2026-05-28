@@ -250,4 +250,123 @@ mod acceptance_tests {
             .success()
             .stderr(predicate::str::contains("Running hook"));
     }
+
+    // --- interrupt ----------------------------------------------------------
+
+    #[test]
+    fn interrupt_nothing_active_fails() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("pomodoro")
+            .arg("interrupt")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("nothing active to interrupt"));
+    }
+
+    #[test]
+    fn interrupt_invalid_kind_fails() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("pomodoro")
+            .arg("interrupt")
+            .arg("--kind")
+            .arg("invalid")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("unknown interruption kind"));
+    }
+
+    #[test]
+    fn interrupt_active_pomodoro_increments_counter() {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("data.db");
+
+        // Seed an active pomodoro directly into the database
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving active pomodoro");
+        }
+
+        // Run interrupt via CLI
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("interrupt")
+            .assert()
+            .success();
+
+        // Verify via the CLI status command
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("status")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 interruption"));
+    }
+
+    #[test]
+    fn interrupt_with_external_flag_works() {
+        let dir = tempdir().unwrap();
+
+        // Seed an active pomodoro
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving active pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("interrupt")
+            .arg("--kind")
+            .arg("external")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn interrupt_verbose_shows_pomodoro_with_counter() {
+        let dir = tempdir().unwrap();
+
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving active pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("--verbose")
+            .arg("pomodoro")
+            .arg("interrupt")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 interruption"));
+    }
 }

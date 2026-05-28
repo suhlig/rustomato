@@ -1,0 +1,1 @@
+ALTER TABLE schedulables ADD COLUMN interruptions INTEGER NOT NULL DEFAULT 0;

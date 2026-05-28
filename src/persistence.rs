@@ -66,7 +66,7 @@ impl Repository {
         let uuid_s = uuid.to_string();
 
         match self.db.query_row(
-            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at from schedulables where uuid=?1",
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions from schedulables where uuid=?1",
             params![uuid_s],
             |row| Ok(Schedulable {
             uuid,
@@ -76,6 +76,7 @@ impl Repository {
             started_at: row.get(4).expect("unable to convert started_at"),
             finished_at: row.get(5).unwrap_or(0),
             cancelled_at: row.get(6).unwrap_or(0),
+            interruptions: row.get(7).unwrap_or(0),
         })) {
             Ok(val) => Ok(val),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
@@ -102,7 +103,7 @@ impl Repository {
         let mut stmt = self
             .db
             .prepare(
-                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at \
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
              FROM schedulables \
              WHERE started_at >= ?1 AND started_at <= ?2 \
              ORDER BY started_at ASC",
@@ -122,6 +123,7 @@ impl Repository {
                     started_at: row.get(4).unwrap_or(0),
                     finished_at: row.get(5).unwrap_or(0),
                     cancelled_at: row.get(6).unwrap_or(0),
+                    interruptions: row.get(7).unwrap_or(0),
                 })
             })
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
@@ -131,6 +133,57 @@ impl Repository {
             result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
         }
         Ok(result)
+    }
+
+    /// Increment the interruption counter for the schedulable with the given UUID.
+    /// Returns the updated schedulable.
+    pub fn record_interrupt(&self, uuid: SqlUuid) -> Result<Schedulable, PersistenceError> {
+        let uuid_s = uuid.to_string();
+
+        match self.db.execute(
+            "UPDATE schedulables SET interruptions = interruptions + 1 WHERE uuid == ?1",
+            params![uuid_s],
+        ) {
+            Ok(rows_affected) if rows_affected > 0 => self.find_by_uuid(uuid),
+            Ok(_) => Err(PersistenceError::CannotFind(format!(
+                "schedulable {} not found",
+                uuid_s
+            ))),
+            Err(e) => Err(PersistenceError::CannotUpdate(format!("{}", e))),
+        }
+    }
+
+    /// Find the most recently finished pomodoro across all time.
+    pub fn most_recently_finished_pomodoro(&self) -> Result<Option<Schedulable>, PersistenceError> {
+        match self.db.query_row(
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             WHERE kind = 'pomodoro' AND finished_at != 0 \
+             ORDER BY finished_at DESC \
+             LIMIT 1",
+            [],
+            |row| {
+                let uuid_str: String = row.get(0)?;
+                let kind_str: String = row.get(1)?;
+                Ok(Schedulable {
+                    uuid: SqlUuid(
+                        Uuid::parse_str(&uuid_str).expect("parsing UUID from database"),
+                    ),
+                    kind: Kind::from(kind_str)
+                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
+                    pid: row.get(2).unwrap_or(0),
+                    duration: row.get(3).unwrap_or(0),
+                    started_at: row.get(4).unwrap_or(0),
+                    finished_at: row.get(5).unwrap_or(0),
+                    cancelled_at: row.get(6).unwrap_or(0),
+                    interruptions: row.get(7).unwrap_or(0),
+                })
+            },
+        ) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
     }
 
     pub fn save(&self, s: &Schedulable) -> Result<Schedulable, PersistenceError> {

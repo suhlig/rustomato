@@ -3,11 +3,10 @@ I am learning Rust by implementing a simple [Pomodoro](https://en.wikipedia.org/
 # Usage
 
 ```command
-$ rustomato pomodoro [start]   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
-$ rustomato pomodoro annotate  # Annotates a¹ Pomodoro.
-$ rustomato pomodoro interrupt # Mark a¹ Pomodoro as interrupted.
-$ rustomato pomodoro log       # Log a previously finished pomodoro.
-$ rustomato break [start]      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
+$ rustomato pomodoro [start]                   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
+$ rustomato pomodoro interrupt                 # Records an interruption on the active (or most recently finished) Pomodoro.
+$ rustomato pomodoro interrupt --kind external # Records an external interruption on the active (or most recently finished) Pomodoro.
+$ rustomato break [start]                      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 ```
 [1] the running, if there is one, or the most recently completed, or the given
 
@@ -50,6 +49,26 @@ This creates the `hooks/` directory (inside `$RUSTOMATO_ROOT`) with executable s
 | `before-finish-break` | Break timer expired or Ctrl-C | yes |
 | `after-finish-break` | Break finished | no |
 
+### Interrupts
+
+When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption
+counter is incremented by one. The pomodoro **continues running** -- an interrupt
+does not cancel or finish it.
+
+If no pomodoro is active but a break is running, the interruption is recorded on
+the most recently finished pomodoro.
+
+Interrupt hooks receive two additional environment variables:
+
+| Variable | Example | Description |
+|---|---|---|
+| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
+| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
+
+Use `--kind internal` (default) or `--kind external` to classify the interruption.
+Internal interruptions are self-inflicted (e.g. checking your phone); external ones
+are caused by the environment (e.g. a colleague knocking).
+
 ### How hooks are invoked
 
 Rustomato executes the hook file directly using the OS `execve`-equivalent, which means the file must be an executable with a valid shebang line or a binary. Any language works:
@@ -90,6 +109,8 @@ This lets a single script dispatch on the hook name if desired.
 | `RUSTOMATO_STARTED_AT` | `1748464846` | Unix timestamp of start |
 | `RUSTOMATO_FINISHED_AT` | `1748464864` | Unix timestamp (after-* only) |
 | `RUSTOMATO_CANCELLED_AT` | `1748464864` | Unix timestamp (after-* only) |
+| `RUSTOMATO_INTERRUPT_KIND` | `internal` | Kind of interrupt (`internal` or `external`; interrupt hooks only) |
+| `RUSTOMATO_INTERRUPTIONS` | `2` | Total interruption count on this schedulable (interrupt hooks only) |
 
 ### Timeout
 
@@ -210,13 +231,13 @@ cargo release patch --dry-run
 # TODO
 
 * Auto-update dependencies via PRs
-* `stats` command
-* `--force`
 * `rustomato pomodoro annotate [WORDS]` adds an annotation to
   - the currently running `rustomato` process,
   - if no process or a break is currently running, amend the most recent pomodoro, or the one given with `--pomodoro UUID`
   - needs `annotations` table, joined onto `schedulables`
   - if no `WORDS` are given, they are taked from `STDIN`
-* `rustomato pomodoro interrupt --external | --internal` marks the currently running Pomodoro as interrupted
-  - technically, an interrupt is an annotation that is of kind `external-interrupt` or `internal-interrupt`
+* `rustomato pomodoro log` logs a finished pomodoro that was completed externally
+* `rustomato stats` command
+* Add `--force` flag to commands
+* `rustomato pomodoro cancel` cancels the current pomodoro. Fails if there is no current pomodoro.
 * Show progress bar only when attached to a terminal

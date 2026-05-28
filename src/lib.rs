@@ -9,7 +9,7 @@ pub mod migration;
 pub mod persistence;
 pub mod scheduling;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
     Pomodoro,
     Break,
@@ -51,6 +51,32 @@ impl fmt::Display for SqlUuid {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterruptionKind {
+    Internal,
+    External,
+}
+
+impl InterruptionKind {
+    pub fn from(str: &str) -> Result<Self, String> {
+        match str.to_lowercase().as_str() {
+            "internal" => Ok(InterruptionKind::Internal),
+            "external" => Ok(InterruptionKind::External),
+            other => Err(format!(
+                "unknown interruption kind '{}'; expected 'internal' or 'external'",
+                other
+            )),
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InterruptionKind::Internal => "internal",
+            InterruptionKind::External => "external",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Schedulable {
     pub pid: u32,
@@ -60,6 +86,7 @@ pub struct Schedulable {
     pub started_at: i64,
     pub finished_at: i64,
     pub cancelled_at: i64,
+    pub interruptions: i64,
 }
 
 pub enum Status {
@@ -102,6 +129,7 @@ impl Schedulable {
             started_at: 0,
             finished_at: 0,
             cancelled_at: 0,
+            interruptions: 0,
         }
     }
 
@@ -151,12 +179,23 @@ impl fmt::Display for Schedulable {
                 write!(f, "{} ({} min)", self.kind, self.duration)
             }
             Status::Active => {
+                let interrupt_info = if self.interruptions > 0 {
+                    let noun = if self.interruptions == 1 {
+                        "interruption"
+                    } else {
+                        "interruptions"
+                    };
+                    format!(" ({} {})", self.interruptions, noun)
+                } else {
+                    String::new()
+                };
                 write!(
                     f,
-                    "{} {} is active since {}",
+                    "{} {} is active since {}{}",
                     self.kind,
                     self.uuid,
-                    format_timestamp(self.started_at)
+                    format_timestamp(self.started_at),
+                    interrupt_info
                 )
             }
             Status::Stale => {
@@ -176,12 +215,23 @@ impl fmt::Display for Schedulable {
                 )
             }
             Status::Finished => {
+                let interrupt_info = if self.interruptions > 0 {
+                    let noun = if self.interruptions == 1 {
+                        "interruption"
+                    } else {
+                        "interruptions"
+                    };
+                    format!(" ({} {})", self.interruptions, noun)
+                } else {
+                    String::new()
+                };
                 write!(
                     f,
-                    "{} {} was finished at {}",
+                    "{} {} was finished at {}{}",
                     self.kind,
                     self.uuid,
-                    format_timestamp(self.finished_at)
+                    format_timestamp(self.finished_at),
+                    interrupt_info
                 )
             }
         }

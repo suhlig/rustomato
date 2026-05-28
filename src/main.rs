@@ -3,7 +3,7 @@ use clap_complete::{Shell, generate};
 use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
-use rustomato::{Kind, Schedulable, Status};
+use rustomato::{InterruptionKind, Kind, Schedulable, Status};
 use std::io;
 use std::path::*;
 use std::{env, process};
@@ -74,7 +74,11 @@ struct FinishPomodoro {}
 
 /// Marks the active Pomodoro as interrupted
 #[derive(Parser)]
-struct InterruptPomodoro {}
+struct InterruptPomodoro {
+    /// Whether the interruption is internal (self-inflicted) or external (environmental)
+    #[clap(short, long, default_value = "internal", value_name = "KIND")]
+    kind: String,
+}
 
 /// Annotates a Pomodoro
 #[derive(Parser)]
@@ -246,8 +250,27 @@ fn main() {
                     }
                 }
             }
-            PomodoroCommands::Interrupt(_) => {
-                eprintln!("TODO Marking the active Pomodoro as interrupted");
+            PomodoroCommands::Interrupt(interrupt_options) => {
+                let kind = match InterruptionKind::from(&interrupt_options.kind) {
+                    Ok(k) => k,
+                    Err(e) => {
+                        eprintln!("Error: {}.", e);
+                        process::exit(1);
+                    }
+                };
+
+                match scheduler.interrupt(kind) {
+                    Ok(interrupted) => {
+                        if verbose {
+                            println!("{}", interrupted);
+                        }
+                        process::exit(0);
+                    }
+                    Err(err) => {
+                        eprintln!("Error: {}.", err);
+                        process::exit(1);
+                    }
+                }
             }
             PomodoroCommands::Annotate(_) => {
                 eprintln!("TODO Annotating the active Pomodoro");
@@ -294,13 +317,23 @@ fn main() {
                                 Status::New => "?",
                             };
 
+                            let interrupt_info = if entry.interruptions > 0 {
+                                format!(
+                                    " ({} interruption{})",
+                                    entry.interruptions,
+                                    if entry.interruptions == 1 { "" } else { "s" }
+                                )
+                            } else {
+                                String::new()
+                            };
                             println!(
-                                "  {:>8} - {:<8}  {:<10} ({:>2} min)  {}",
+                                "  {:>8} - {:<8}  {:<10} ({:>2} min)  {}{}",
                                 start,
                                 end,
                                 format!("{}", entry.kind),
                                 entry.duration,
-                                status_icon
+                                status_icon,
+                                interrupt_info
                             );
                         }
                     }

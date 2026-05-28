@@ -1,6 +1,6 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
-use super::{Kind, Schedulable};
+use super::{InterruptionKind, Kind, Schedulable};
 use pbr::ProgressBar;
 use std::fmt;
 use std::path::PathBuf;
@@ -36,6 +36,8 @@ pub enum SchedulingError {
     ExecutionError,
     AlreadyRunning(u32),
     HookRejected,
+    NoActiveSchedulable,
+    NoFinishedPomodoro,
 }
 
 impl fmt::Display for SchedulingError {
@@ -47,6 +49,15 @@ impl fmt::Display for SchedulingError {
             }
             SchedulingError::HookRejected => {
                 write!(f, "a before-hook rejected the operation")
+            }
+            SchedulingError::NoActiveSchedulable => {
+                write!(f, "nothing active to interrupt")
+            }
+            SchedulingError::NoFinishedPomodoro => {
+                write!(
+                    f,
+                    "a break is active but there is no finished pomodoro to interrupt"
+                )
             }
         }
     }
@@ -76,6 +87,74 @@ impl Scheduler {
         {
             eprintln!("Warning: after-hook {} reported: {}", event, e);
         }
+    }
+
+    /// Run a hook with the interrupt kind set on the context.
+    fn run_hook_with_interrupt_kind(
+        &self,
+        event: HookEvent,
+        schedulable: &Schedulable,
+        kind: &InterruptionKind,
+    ) -> Result<(), SchedulingError> {
+        let mut ctx = HookContext::from_schedulable(&self.root, schedulable, self.verbose);
+        ctx.interrupt_kind = Some(kind.as_str().to_string());
+        hooks::run_hook(event, &ctx, self.no_hooks).map_err(|e| {
+            eprintln!("Error: Hook {} failed: {}", event, e);
+            SchedulingError::HookRejected
+        })
+    }
+
+    fn run_hook_after_with_interrupt_kind(
+        &self,
+        event: HookEvent,
+        schedulable: &Schedulable,
+        kind: &InterruptionKind,
+    ) {
+        if let Err(e) = self.run_hook_with_interrupt_kind(event, schedulable, kind)
+            && self.verbose
+        {
+            eprintln!("Warning: after-hook {} reported: {}", event, e);
+        }
+    }
+
+    /// Access the underlying repository (used in tests).
+    pub fn repo(&self) -> &Repository {
+        &self.repo
+    }
+
+    /// Record an interruption on the active pomodoro, or on the most recently finished
+    /// pomodoro if a break is active.
+    pub fn interrupt(&self, kind: InterruptionKind) -> Result<Schedulable, SchedulingError> {
+        let active = self
+            .repo
+            .active()
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        let target = match active {
+            Some(s) if s.kind == Kind::Pomodoro => s,
+            Some(_) => {
+                // Break is active, find most recently finished pomodoro
+                self.repo
+                    .most_recently_finished_pomodoro()
+                    .map_err(|_| SchedulingError::ExecutionError)?
+                    .ok_or(SchedulingError::NoFinishedPomodoro)?
+            }
+            None => return Err(SchedulingError::NoActiveSchedulable),
+        };
+
+        // Run before-interrupt hook
+        self.run_hook_with_interrupt_kind(HookEvent::BeforeInterruptPomodoro, &target, &kind)?;
+
+        // Increment the counter
+        let updated = self
+            .repo
+            .record_interrupt(target.uuid)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        // Run after-interrupt hook
+        self.run_hook_after_with_interrupt_kind(HookEvent::AfterInterruptPomodoro, &updated, &kind);
+
+        Ok(updated)
     }
 
     pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {

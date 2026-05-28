@@ -6,6 +6,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "V2__add_constraint",
         include_str!("../migrations/V2__add_constraint.sql"),
     ),
+    (
+        "V3__add_interruptions",
+        include_str!("../migrations/V3__add_interruptions.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) {

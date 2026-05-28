@@ -2,7 +2,7 @@ mod hooks_integration {
     use assert_matches::assert_matches;
     use rustomato::persistence::Repository;
     use rustomato::scheduling::{Scheduler, SchedulingError};
-    use rustomato::{Kind, Schedulable};
+    use rustomato::{InterruptionKind, Kind, Schedulable};
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process;
@@ -211,5 +211,153 @@ mod hooks_integration {
         // finished_at should be a non-empty Unix timestamp
         let ts: i64 = parts[1].parse().expect("expected a numeric timestamp");
         assert!(ts > 0);
+    }
+
+    // --- interrupt hooks -----------------------------------------------------
+
+    #[test]
+    fn before_interrupt_pomodoro_hook_aborts_on_nonzero_exit() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "before-interrupt-pomodoro",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        // Manually save an active pomodoro
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        let result = sched.interrupt(InterruptionKind::Internal);
+        assert_matches!(result, Err(SchedulingError::HookRejected));
+    }
+
+    #[test]
+    fn after_interrupt_pomodoro_hook_failure_is_not_fatal() {
+        let dir = tempdir().unwrap();
+        setup_hook(
+            dir.path(),
+            "after-interrupt-pomodoro",
+            "#!/usr/bin/env sh\nexit 1\n",
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        let result = sched.interrupt(InterruptionKind::Internal);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn interrupt_increments_counter() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        let pom = sched.repo().save(&pom).expect("saving active pomodoro");
+
+        sched
+            .interrupt(InterruptionKind::Internal)
+            .expect("first interrupt");
+        sched
+            .interrupt(InterruptionKind::External)
+            .expect("second interrupt");
+
+        let updated = sched.repo().find_by_uuid(pom.uuid).expect("finding");
+        assert_eq!(updated.interruptions, 2);
+    }
+
+    #[test]
+    fn interrupt_no_active_returns_error() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        let result = sched.interrupt(InterruptionKind::Internal);
+        assert_matches!(result, Err(SchedulingError::NoActiveSchedulable));
+    }
+
+    #[test]
+    fn interrupt_during_break_falls_back_to_finished_pomodoro() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // First, create and finish a pomodoro
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving pomodoro");
+        pom.finished_at = 2000;
+        sched.repo().save(&pom).expect("finishing pomodoro");
+
+        // Now start a break
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 3000;
+        let brk = sched.repo().save(&brk).expect("saving break");
+
+        // Interrupt during break → should go to finished pomodoro
+        let result = sched.interrupt(InterruptionKind::External);
+        assert!(result.is_ok());
+
+        // The finished pomodoro should have the interruption, not the break
+        let finished = sched
+            .repo()
+            .most_recently_finished_pomodoro()
+            .expect("querying")
+            .expect("should exist");
+        assert_eq!(finished.interruptions, 1);
+
+        // The break should have 0 interruptions
+        let active_break = sched.repo().find_by_uuid(brk.uuid).expect("finding break");
+        assert_eq!(active_break.interruptions, 0);
+    }
+
+    #[test]
+    fn interrupt_during_break_no_finished_pomodoro_returns_error() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // Start a break but never finish a pomodoro
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 1000;
+        sched.repo().save(&brk).expect("saving break");
+
+        let result = sched.interrupt(InterruptionKind::Internal);
+        assert_matches!(result, Err(SchedulingError::NoFinishedPomodoro));
+    }
+
+    #[test]
+    fn interrupt_hook_receives_interrupt_kind_env() {
+        let dir = tempdir().unwrap();
+        let out = dir.path().join("result");
+
+        setup_hook(
+            dir.path(),
+            "after-interrupt-pomodoro",
+            &format!(
+                "#!/usr/bin/env sh\necho \"$RUSTOMATO_INTERRUPT_KIND:$RUSTOMATO_INTERRUPTIONS\" > {}\
+",
+                out.display()
+            ),
+        );
+
+        let sched = scheduler(dir.path());
+
+        let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        sched
+            .interrupt(InterruptionKind::External)
+            .expect("interrupt");
+
+        let got = std::fs::read_to_string(&out).unwrap();
+        let trimmed = got.trim();
+        assert_eq!(trimmed, "external:1");
     }
 }
