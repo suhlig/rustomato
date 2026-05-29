@@ -16,9 +16,7 @@ $ rustomato break start              # Starts a break. Auto-finishes the current
 
 There must never be more than one pomodoro [XOR](http://en.wikipedia.org/wiki/Xor) break at any given time.
 
-This is scoped to an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`).
-
-The enforcement happens at the database level via a trigger that rejects overlapping time ranges, and at the application level in the scheduler.
+This is scoped to an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`). The enforcement happens at the database level via a trigger that rejects overlapping time ranges, and at the application level in the scheduler.
 
 # State Transitions
 
