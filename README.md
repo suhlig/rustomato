@@ -249,7 +249,6 @@ cargo release patch --dry-run
 
 # TODO
 
-* Add aliases for most likely commands
 * Add `--force` flag to commands
 * `rustomato pomodoro cancel` cancels the current pomodoro. Fails if there is no current pomodoro.
 * Show progress bar only when attached to a terminal

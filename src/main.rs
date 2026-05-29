@@ -11,7 +11,7 @@ use url::Url;
 
 /// A simple Pomodoro timer for the command line
 #[derive(Parser)]
-#[clap(version = app_version())]
+#[clap(version = app_version(), infer_subcommands = true)]
 struct Opts {
     #[clap(short, long)]
     verbose: bool,
@@ -44,6 +44,7 @@ struct InitCommand {}
 
 /// Work with a Pomodoro
 #[derive(Parser)]
+#[clap(infer_subcommands = true)]
 struct PomodoroCommand {
     #[clap(subcommand)]
     subcmd: PomodoroCommands,
@@ -108,6 +109,7 @@ struct AnnotatePomodoro {
 
 /// Work with a break
 #[derive(Parser)]
+#[clap(infer_subcommands = true)]
 struct BreakCommand {
     #[clap(subcommand)]
     subcmd: BreakCommands,
@@ -166,6 +168,7 @@ struct CompletionsCommand {
 
 /// Generate a productivity report
 #[derive(Parser)]
+#[clap(infer_subcommands = true)]
 struct ReportCommand {
     #[clap(subcommand)]
     subcmd: ReportCommands,
