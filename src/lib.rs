@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub mod hooks;
 pub mod migration;
 pub mod persistence;
+pub mod report;
 pub mod scheduling;
 
 #[derive(Debug)]

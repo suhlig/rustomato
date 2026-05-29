@@ -887,4 +887,224 @@ mod acceptance_tests {
             .stdout(predicate::str::contains("Pomodori"))
             .stdout(predicate::str::contains("1 completed"));
     }
+
+    // ── Week report ────────────────────────────────────────
+
+    #[test]
+    fn report_week_empty() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("week")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("nothing recorded this week"));
+    }
+
+    #[test]
+    fn report_week_with_logged_pomodori() {
+        let dir = tempdir().unwrap();
+
+        // Log pomodori on Monday, Wednesday, and Friday of the ISO week
+        // that contains 2026-05-29 (Friday).
+        for (day, hour) in [("2026-05-25", 10), ("2026-05-27", 11), ("2026-05-29", 14)] {
+            rustomato()
+                .env("RUSTOMATO_ROOT", dir.path())
+                .arg("--no-hooks")
+                .arg("pomodoro")
+                .arg("log")
+                .arg("--started-at")
+                .arg(format!("{}T{:02}:00:00Z", day, hour))
+                .arg("--duration")
+                .arg("25")
+                .assert()
+                .success();
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("week")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("3 completed"))
+            .stdout(predicate::str::contains("0 cancelled"));
+    }
+
+    #[test]
+    fn report_week_invalid_date() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("week")
+            .arg("--date")
+            .arg("not-a-date")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("invalid date"));
+    }
+
+    #[test]
+    fn report_week_defaults_to_today() {
+        use chrono::Local;
+
+        let dir = tempdir().unwrap();
+
+        // Log a pomodoro that falls on today's date
+        let today_midnight = Local::now()
+            .date_naive()
+            .and_hms_opt(10, 0, 0)
+            .unwrap()
+            .and_local_timezone(Local)
+            .earliest()
+            .unwrap();
+        let ts = today_midnight.format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg(&ts)
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // Report without --date should pick up today's entries within this week
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("week")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("completed"));
+    }
+
+    #[test]
+    fn report_week_shows_day_by_day_breakdown() {
+        let dir = tempdir().unwrap();
+
+        // Log pomodori on Mon, Wed, Fri of the ISO week containing 2026-05-29
+        for (day, hour) in [
+            ("2026-05-25", 9),
+            ("2026-05-26", 10),
+            ("2026-05-27", 11),
+            ("2026-05-29", 14),
+        ] {
+            rustomato()
+                .env("RUSTOMATO_ROOT", dir.path())
+                .arg("--no-hooks")
+                .arg("pomodoro")
+                .arg("log")
+                .arg("--started-at")
+                .arg(format!("{}T{:02}:00:00Z", day, hour))
+                .arg("--duration")
+                .arg("25")
+                .assert()
+                .success();
+        }
+
+        let assert = rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("week")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success();
+
+        // Should show day headers for each day of the week
+        assert
+            .stdout(predicate::str::contains("Mon"))
+            .stdout(predicate::str::contains("Tue"))
+            .stdout(predicate::str::contains("Wed"))
+            .stdout(predicate::str::contains("Thu"))
+            .stdout(predicate::str::contains("Fri"))
+            .stdout(predicate::str::contains("4 completed"));
+    }
+
+    // ── Interruption patterns report ────────────────────────
+
+    #[test]
+    fn report_interruptions_empty() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("interruptions")
+            .arg("--date")
+            .arg("2026-05-29")
+            .arg("--days")
+            .arg("1")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("No interruptions recorded"));
+    }
+
+    #[test]
+    fn report_interruptions_invalid_date() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("interruptions")
+            .arg("--date")
+            .arg("not-a-date")
+            .arg("--days")
+            .arg("1")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("invalid date"));
+    }
+
+    #[test]
+    fn report_interruptions_with_only_counter_data() {
+        let dir = tempdir().unwrap();
+
+        // Log a finished pomodoro that has interruptions recorded via counter
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // The report should note that no interrupt log entries exist
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("interruptions")
+            .arg("--date")
+            .arg("2026-05-29")
+            .arg("--days")
+            .arg("1")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("No interruptions recorded"));
+    }
 }

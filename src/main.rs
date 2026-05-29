@@ -174,6 +174,9 @@ struct ReportCommand {
 #[derive(Parser)]
 enum ReportCommands {
     Day(DayReport),
+    Week(WeekReport),
+    /// Interruption pattern analysis by hour of day and day of week
+    Interruptions(InterruptionsReport),
 }
 
 /// Daily productivity report
@@ -182,6 +185,25 @@ struct DayReport {
     /// Date in ISO 8601 format (YYYY-MM-DD). Defaults to today.
     #[clap(long, value_name = "DATE")]
     date: Option<String>,
+}
+
+/// Weekly productivity report
+#[derive(Parser)]
+struct WeekReport {
+    /// A date within the target week (YYYY-MM-DD). Defaults to today.
+    #[clap(long, value_name = "DATE")]
+    date: Option<String>,
+}
+
+/// Interruption pattern report
+#[derive(Parser)]
+struct InterruptionsReport {
+    /// End date for the analysis window (YYYY-MM-DD). Defaults to today.
+    #[clap(long, value_name = "DATE")]
+    date: Option<String>,
+    /// Number of days to look back. Defaults to 7.
+    #[clap(long, default_value = "7", value_name = "DAYS")]
+    days: u32,
 }
 
 fn main() {
@@ -713,6 +735,19 @@ fn main() {
                         "  (Kind breakdown not available for interruptions recorded before the upgrade)"
                     );
                 }
+            }
+            ReportCommands::Week(week_options) => {
+                rustomato::report::print_week_report(
+                    &Repository::from_url(&db_url),
+                    week_options.date,
+                );
+            }
+            ReportCommands::Interruptions(int_options) => {
+                rustomato::report::print_interruptions_report(
+                    &Repository::from_url(&db_url),
+                    int_options.date,
+                    int_options.days,
+                );
             }
         },
         SubCommands::Completions(_) => unreachable!(),
