@@ -15,9 +15,27 @@ $ rustomato break [start]                      # Starts a break. Auto-finishes t
 
 The possible application states are valid for an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`, which defaults to `$RUSTOMATO_ROOT/data.db`):
 
-  ![Application States](doc/statemachine.drawio.svg)
-
 The default for `$RUSTOMATO_ROOT` is `$HOME/.rustomato`.
+
+## State Transitions
+
+```mermaid
+stateDiagram-v2
+    [*] --> New
+    New --> Active : pomodoro / break start
+    Active --> Finished : timer expired
+    Active --> Cancelled : SIGINT (pomodoro)
+    Active --> Finished : SIGINT (break)
+    Active --> Stale : process dies
+    Cancelled --> [*]
+    Finished --> [*]
+    Stale --> [*]
+```
+
+The key difference between a pomodoro and a break is how they respond to interruptions and cancellation:
+
+* a pomodoro can be interrupted (keeping it running) or cancelled (via SIGINT), whereas
+* a break is simply finished — it does not accept interruptions and SIGINT finishes it rather than cancelling it.
 
 ## Hooks
 
