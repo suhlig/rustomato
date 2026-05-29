@@ -17,6 +17,7 @@ pub enum PersistenceError {
     CannotUpdate(String),
     CannotFind(String),
     AlreadyRunning(u32),
+    OverlappingTimeRange,
 }
 
 impl fmt::Display for PersistenceError {
@@ -26,6 +27,9 @@ impl fmt::Display for PersistenceError {
             PersistenceError::CannotUpdate(e) => write!(f, "Cannot update: {}", e),
             PersistenceError::CannotFind(e) => write!(f, "Cannot find: {}", e),
             PersistenceError::AlreadyRunning(pid) => write!(f, "Already running as {}", pid),
+            PersistenceError::OverlappingTimeRange => {
+                write!(f, "Time range overlaps with an existing entry (Rule #1)")
+            }
         }
     }
 }
@@ -39,6 +43,8 @@ impl Repository {
                 | OpenFlags::SQLITE_OPEN_URI,
         )
         .expect("opening database connection");
+        db.execute_batch("PRAGMA foreign_keys = ON;")
+            .expect("enabling foreign key enforcement");
         crate::migration::run(&db);
         Self { db }
     }
@@ -289,6 +295,28 @@ impl Repository {
             Ok(val) => Ok(Some(val)),
             Err(QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
+    /// Directly insert a finished pomodoro (for external log).
+    /// The entry is inserted with pid=NULL, finished_at set, and the no-overlap trigger
+    /// (Rule #1) is checked.
+    pub fn save_external_finished(&self, s: &Schedulable) -> Result<Schedulable, PersistenceError> {
+        let uuid = s.uuid.to_string();
+
+        match self.db.execute(
+            "INSERT INTO schedulables (uuid, kind, pid, duration, started_at, finished_at, interruptions) \
+             VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6)",
+            params![uuid, s.kind, s.duration, s.started_at, s.finished_at, s.interruptions],
+        ) {
+            Ok(_) => self.find_by_uuid(s.uuid),
+            Err(e) => {
+                let msg = format!("{}", e);
+                if msg.contains("Rule #1") {
+                    return Err(PersistenceError::OverlappingTimeRange);
+                }
+                Err(PersistenceError::CannotSave(msg))
+            }
         }
     }
 

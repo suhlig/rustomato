@@ -246,6 +246,49 @@ impl fmt::Display for Schedulable {
     }
 }
 
+/// Parse a timestamp string into a Unix timestamp (seconds since epoch).
+///
+/// Accepts:
+/// - RFC 3339 / ISO 8601 with timezone offset (e.g. `2026-05-29T14:30:00Z` or `2026-05-29T14:30:00+02:00`)
+/// - ISO 8601 without timezone (interpreted as local time)
+/// - A bare integer interpreted as a Unix timestamp
+pub fn parse_timestamp(s: &str) -> Result<i64, String> {
+    use chrono::Local;
+    use chrono::TimeZone;
+
+    // RFC 3339 / ISO 8601 with timezone
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.timestamp());
+    }
+    // ISO 8601 with timezone via parse_from_str
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%+") {
+        return Ok(dt.timestamp());
+    }
+
+    // ISO 8601 without timezone – interpret as local time
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S")
+        && let Some(local) = Local.from_local_datetime(&naive).earliest()
+    {
+        return Ok(local.timestamp());
+    }
+    // Also accept space-separated ISO 8601 (no T)
+    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")
+        && let Some(local) = Local.from_local_datetime(&naive).earliest()
+    {
+        return Ok(local.timestamp());
+    }
+
+    // Unix timestamp (bare integer)
+    if let Ok(ts) = s.parse::<i64>() {
+        return Ok(ts);
+    }
+
+    Err(format!(
+        "cannot parse '{}' as a timestamp; expected RFC 3339 (e.g. 2026-05-29T14:30:00Z) or Unix timestamp",
+        s
+    ))
+}
+
 pub fn format_timestamp(timestamp: i64) -> String {
     use chrono::{Local, TimeZone};
 

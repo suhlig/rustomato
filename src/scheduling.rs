@@ -121,6 +121,31 @@ impl Scheduler {
         }
     }
 
+    /// Log an externally completed pomodoro.
+    pub fn log(&self, schedulable: &Schedulable) -> Result<Schedulable, SchedulingError> {
+        // --- before-log-pomodoro ---
+        self.run_hook(HookEvent::BeforeLogPomodoro, schedulable)?;
+
+        let saved = self
+            .repo
+            .save_external_finished(schedulable)
+            .map_err(|e| match e {
+                PersistenceError::OverlappingTimeRange => {
+                    eprintln!("Error: {}.", e);
+                    SchedulingError::ExecutionError
+                }
+                _ => {
+                    eprintln!("Error: {}.", e);
+                    SchedulingError::ExecutionError
+                }
+            })?;
+
+        // --- after-log-pomodoro ---
+        self.run_hook_after(HookEvent::AfterLogPomodoro, &saved);
+
+        Ok(saved)
+    }
+
     /// Record an interruption on the active pomodoro, or on the most recently finished
     /// pomodoro if a break is active.
     pub fn interrupt(&self, kind: InterruptionKind) -> Result<Schedulable, SchedulingError> {

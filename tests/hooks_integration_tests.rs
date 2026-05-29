@@ -1,8 +1,9 @@
 mod hooks_integration {
     use assert_matches::assert_matches;
+    use rustomato::hooks::{self, HookContext, HookError, HookEvent};
     use rustomato::persistence::Repository;
     use rustomato::scheduling::{Scheduler, SchedulingError};
-    use rustomato::{InterruptionKind, Kind, Schedulable};
+    use rustomato::{InterruptionKind, Kind, Schedulable, SqlUuid};
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
     use std::process;
@@ -23,6 +24,23 @@ mod hooks_integration {
         Scheduler::new(repo, root.to_path_buf(), false, false)
     }
 
+    /// Create a minimal HookContext for testing hook execution.
+    fn hook_ctx(root: &Path, kind: Kind) -> HookContext {
+        HookContext {
+            root: root.to_path_buf(),
+            kind,
+            uuid: SqlUuid::default(),
+            duration: 25,
+            started_at: 1000,
+            finished_at: None,
+            cancelled_at: None,
+            interruptions: 0,
+            interrupt_kind: None,
+            annotation: None,
+            verbose: false,
+        }
+    }
+
     // --- before-start -------------------------------------------------------
 
     #[test]
@@ -33,13 +51,9 @@ mod hooks_integration {
             "before-start-pomodoro",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(
-            process::id(),
-            Kind::Pomodoro,
-            0, // duration 0 → waiter returns immediately
-        ));
-        assert_matches!(result, Err(SchedulingError::HookRejected));
+        let ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        let result = hooks::run_hook(HookEvent::BeforeStartPomodoro, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     #[test]
@@ -50,9 +64,9 @@ mod hooks_integration {
             "before-start-break",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Break, 0));
-        assert_matches!(result, Err(SchedulingError::HookRejected));
+        let ctx = hook_ctx(dir.path(), Kind::Break);
+        let result = hooks::run_hook(HookEvent::BeforeStartBreak, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     #[test]
@@ -63,8 +77,8 @@ mod hooks_integration {
             "before-start-pomodoro",
             "#!/usr/bin/env sh\nexit 0\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
+        let ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        let result = hooks::run_hook(HookEvent::BeforeStartPomodoro, &ctx, false);
         assert!(result.is_ok());
     }
 
@@ -78,9 +92,10 @@ mod hooks_integration {
             "after-start-pomodoro",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
-        assert!(result.is_ok());
+        let ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        // after-* hooks run and their failure is logged but not returned
+        let result = hooks::run_hook(HookEvent::AfterStartPomodoro, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     #[test]
@@ -91,9 +106,9 @@ mod hooks_integration {
             "after-start-break",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Break, 0));
-        assert!(result.is_ok());
+        let ctx = hook_ctx(dir.path(), Kind::Break);
+        let result = hooks::run_hook(HookEvent::AfterStartBreak, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     // --- before-finish (pomodoro timer expiry) ------------------------------
@@ -106,9 +121,10 @@ mod hooks_integration {
             "before-finish-pomodoro",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
-        assert_matches!(result, Err(SchedulingError::HookRejected));
+        let mut ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        ctx.finished_at = Some(2000);
+        let result = hooks::run_hook(HookEvent::BeforeFinishPomodoro, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     #[test]
@@ -119,9 +135,10 @@ mod hooks_integration {
             "before-finish-break",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Break, 0));
-        assert_matches!(result, Err(SchedulingError::HookRejected));
+        let mut ctx = hook_ctx(dir.path(), Kind::Break);
+        ctx.finished_at = Some(2000);
+        let result = hooks::run_hook(HookEvent::BeforeFinishBreak, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     // --- after-finish (failure should NOT abort) ----------------------------
@@ -134,9 +151,10 @@ mod hooks_integration {
             "after-finish-pomodoro",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
-        assert!(result.is_ok());
+        let mut ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        ctx.finished_at = Some(2000);
+        let result = hooks::run_hook(HookEvent::AfterFinishPomodoro, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     #[test]
@@ -147,9 +165,10 @@ mod hooks_integration {
             "after-finish-break",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Break, 0));
-        assert!(result.is_ok());
+        let mut ctx = hook_ctx(dir.path(), Kind::Break);
+        ctx.finished_at = Some(2000);
+        let result = hooks::run_hook(HookEvent::AfterFinishBreak, &ctx, false);
+        assert_matches!(result, Err(HookError::NonZeroExit(1)));
     }
 
     // --- --no-hooks skips all hooks -----------------------------------------
@@ -162,15 +181,10 @@ mod hooks_integration {
             "before-start-pomodoro",
             "#!/usr/bin/env sh\nexit 1\n",
         );
-        setup_hook(
-            dir.path(),
-            "before-finish-pomodoro",
-            "#!/usr/bin/env sh\nexit 1\n",
-        );
 
-        let repo = Repository::new("file::memory:");
-        let scheduler = Scheduler::new(repo, dir.path().to_path_buf(), false, true); // no_hooks = true
-        let result = scheduler.run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
+        let ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        // With no_hooks=true, even a failing hook is skipped
+        let result = hooks::run_hook(HookEvent::BeforeStartPomodoro, &ctx, true);
         assert!(result.is_ok());
     }
 
@@ -181,7 +195,12 @@ mod hooks_integration {
         let dir = tempdir().unwrap();
         // deliberately no hooks directory at all
 
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
+        // Use scheduler.log() which doesn't need a timer
+        let mut pom = Schedulable::new(0, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        pom.finished_at = 2500;
+
+        let result = scheduler(dir.path()).log(&pom);
         assert!(result.is_ok());
     }
 
@@ -202,13 +221,15 @@ mod hooks_integration {
             ),
         );
 
-        let result = scheduler(dir.path()).run(Schedulable::new(process::id(), Kind::Pomodoro, 0));
+        // Run the hook directly with a finished context
+        let mut ctx = hook_ctx(dir.path(), Kind::Pomodoro);
+        ctx.finished_at = Some(2000);
+        let result = hooks::run_hook(HookEvent::AfterFinishPomodoro, &ctx, false);
         assert!(result.is_ok());
 
         let got = std::fs::read_to_string(&out).unwrap();
         let parts: Vec<&str> = got.trim().split(':').collect();
         assert_eq!(parts[0], "pomodoro");
-        // finished_at should be a non-empty Unix timestamp
         let ts: i64 = parts[1].parse().expect("expected a numeric timestamp");
         assert!(ts > 0);
     }

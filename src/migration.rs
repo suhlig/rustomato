@@ -14,6 +14,11 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "V4__add_annotations",
         include_str!("../migrations/V4__add_annotations.sql"),
     ),
+    ("V5__rule_1", include_str!("../migrations/V5__rule_1.sql")),
+    (
+        "V6__domain_constraints",
+        include_str!("../migrations/V6__domain_constraints.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) {

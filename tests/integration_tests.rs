@@ -425,4 +425,95 @@ mod integration_tests {
         assert_eq!(result.finished_at, 30);
         assert_eq!(result.kind, Kind::Pomodoro);
     }
+
+    // --- save_external_finished --------------------------------------------
+
+    #[test]
+    fn save_external_finished_pomodoro() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(0, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        pom.finished_at = 1000 + 25 * 60;
+
+        let saved = repo
+            .save_external_finished(&pom)
+            .expect("saving external finished pomodoro");
+
+        assert_eq!(saved.finished_at, 1000 + 25 * 60);
+        assert_eq!(saved.kind, Kind::Pomodoro);
+        assert_eq!(saved.interruptions, 0);
+    }
+
+    #[test]
+    fn save_external_finished_overlaps_existing_returns_error() {
+        let repo = Repository::new("file::memory:");
+
+        // Insert a finished pomodoro [1000, 2500]
+        let mut existing = Schedulable::new(0, Kind::Pomodoro, 25);
+        existing.started_at = 1000;
+        existing.finished_at = 2500;
+        repo.save_external_finished(&existing)
+            .expect("saving existing pomodoro");
+
+        // Try to insert an overlapping pomodoro [2000, 3500]
+        let mut overlapping = Schedulable::new(0, Kind::Pomodoro, 25);
+        overlapping.started_at = 2000;
+        overlapping.finished_at = 3500;
+
+        let result = repo.save_external_finished(&overlapping);
+        assert_matches!(result, Err(PersistenceError::OverlappingTimeRange));
+    }
+
+    #[test]
+    fn save_external_finished_adjacent_non_overlapping_succeeds() {
+        let repo = Repository::new("file::memory:");
+
+        // Insert a finished pomodoro [1000, 2500]
+        let mut existing = Schedulable::new(0, Kind::Pomodoro, 25);
+        existing.started_at = 1000;
+        existing.finished_at = 2500;
+        repo.save_external_finished(&existing)
+            .expect("saving existing pomodoro");
+
+        // Insert an adjacent non-overlapping pomodoro [2500, 4000]
+        let mut adjacent = Schedulable::new(0, Kind::Pomodoro, 25);
+        adjacent.started_at = 2500;
+        adjacent.finished_at = 4000;
+
+        let result = repo.save_external_finished(&adjacent);
+        assert!(result.is_ok());
+    }
+}
+
+// --- parse_timestamp ---------------------------------------------------------
+
+mod parse_timestamp_tests {
+    use rustomato::parse_timestamp;
+
+    #[test]
+    fn parse_rfc3339_with_zulu() {
+        let ts = parse_timestamp("2026-05-29T14:30:00Z").expect("parsing RFC 3339 Z");
+        assert_eq!(ts, 1780065000);
+    }
+
+    #[test]
+    fn parse_rfc3339_with_offset() {
+        // 2026-05-29T14:30:00+02:00 = 2026-05-29T12:30:00Z
+        let ts =
+            parse_timestamp("2026-05-29T14:30:00+02:00").expect("parsing RFC 3339 with offset");
+        assert_eq!(ts, 1780057800);
+    }
+
+    #[test]
+    fn parse_unix_timestamp() {
+        let ts = parse_timestamp("1716994200").expect("parsing Unix timestamp");
+        assert_eq!(ts, 1716994200);
+    }
+
+    #[test]
+    fn parse_invalid_returns_error() {
+        let result = parse_timestamp("not-a-timestamp");
+        assert!(result.is_err());
+    }
 }

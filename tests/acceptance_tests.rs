@@ -95,12 +95,12 @@ mod acceptance_tests {
 
         std::fs::create_dir_all(dir.path().join("hooks")).unwrap();
         std::fs::write(
-            dir.path().join("hooks").join("before-start-pomodoro"),
+            dir.path().join("hooks").join("before-log-pomodoro"),
             "#!/usr/bin/env sh\nexit 1\n",
         )
         .unwrap();
         std::fs::set_permissions(
-            dir.path().join("hooks").join("before-start-pomodoro"),
+            dir.path().join("hooks").join("before-log-pomodoro"),
             std::fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -110,9 +110,9 @@ mod acceptance_tests {
             .env("RUSTOMATO_ROOT", dir.path())
             .arg("--no-hooks")
             .arg("pomodoro")
-            .arg("start")
-            .arg("--duration")
-            .arg("0")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
             .assert()
             .success();
     }
@@ -152,14 +152,27 @@ mod acceptance_tests {
     fn no_hooks_break_succeeds_despite_failing_hook() {
         let dir = tempdir().unwrap();
 
+        // Seed a finished break to annotate
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            let db_path = dir.path().join("data.db");
+            // Repository::new runs migrations, creates the DB
+            let _repo = Repository::new(&db_path.to_string_lossy());
+            let mut b = Schedulable::new(0, Kind::Break, 5);
+            b.started_at = 1000;
+            b.finished_at = 1300;
+            _repo.save_external_finished(&b).expect("seeding break");
+        }
+
         std::fs::create_dir_all(dir.path().join("hooks")).unwrap();
         std::fs::write(
-            dir.path().join("hooks").join("before-start-break"),
+            dir.path().join("hooks").join("before-annotate-break"),
             "#!/usr/bin/env sh\nexit 1\n",
         )
         .unwrap();
         std::fs::set_permissions(
-            dir.path().join("hooks").join("before-start-break"),
+            dir.path().join("hooks").join("before-annotate-break"),
             std::fs::Permissions::from_mode(0o755),
         )
         .unwrap();
@@ -168,9 +181,8 @@ mod acceptance_tests {
             .env("RUSTOMATO_ROOT", dir.path())
             .arg("--no-hooks")
             .arg("break")
-            .arg("start")
-            .arg("--duration")
-            .arg("0")
+            .arg("annotate")
+            .arg("test")
             .assert()
             .success();
     }
@@ -210,7 +222,7 @@ mod acceptance_tests {
 
         std::fs::create_dir_all(dir.path().join("hooks")).unwrap();
         std::fs::write(
-            dir.path().join("hooks").join("before-start-pomodoro"),
+            dir.path().join("hooks").join("before-log-pomodoro"),
             "#!/usr/bin/env sh\nexit 1\n",
         )
         .unwrap();
@@ -219,9 +231,9 @@ mod acceptance_tests {
         rustomato()
             .env("RUSTOMATO_ROOT", dir.path())
             .arg("pomodoro")
-            .arg("start")
-            .arg("--duration")
-            .arg("0")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
             .assert()
             .success();
     }
@@ -239,13 +251,14 @@ mod acceptance_tests {
             .assert()
             .success();
 
+        // Use log instead of start to avoid blocking on timer
         rustomato()
             .env("RUSTOMATO_ROOT", dir.path())
             .arg("--verbose")
             .arg("pomodoro")
-            .arg("start")
-            .arg("--duration")
-            .arg("0")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
             .assert()
             .success()
             .stderr(predicate::str::contains("Running hook"));
@@ -525,5 +538,215 @@ mod acceptance_tests {
             .assert()
             .failure()
             .stderr(predicate::str::contains("annotation text is empty"));
+    }
+
+    // --- log ---------------------------------------------------------------
+
+    #[test]
+    fn log_needs_at_least_one_timestamp() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "at least one of --started-at or --finished-at",
+            ));
+    }
+
+    #[test]
+    fn log_all_three_is_error() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:25:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "cannot specify --duration when both",
+            ));
+    }
+
+    #[test]
+    fn log_with_started_at_and_duration() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // Verify it appears in the journal
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("journal")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("finished"));
+    }
+
+    #[test]
+    fn log_with_finished_at_and_duration() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:25:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // Verify via verbose that duration was recorded
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("journal")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("25 min"));
+    }
+
+    #[test]
+    fn log_with_both_timestamps() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:30:00Z")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn log_finished_before_started_is_error() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:25:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:00:00Z")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "--finished-at must be after --started-at",
+            ));
+    }
+
+    #[test]
+    fn log_with_default_duration() {
+        let dir = tempdir().unwrap();
+
+        // Only --started-at, no --duration → defaults to 25 minutes
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .assert()
+            .success();
+
+        // Verify via verbose that 25 min is recorded
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--verbose")
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T11:00:00Z")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("25 min"));
+    }
+
+    #[test]
+    fn log_overlapping_rule1_error() {
+        let dir = tempdir().unwrap();
+
+        // First log: 10:00 - 10:25
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // Second log overlapping: 10:10 - 10:35
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:10:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("Error"));
+    }
+
+    #[test]
+    fn log_with_unix_timestamp() {
+        let dir = tempdir().unwrap();
+
+        // Unix timestamp for 2026-05-29T10:00:00Z
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("1780056000")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
     }
 }

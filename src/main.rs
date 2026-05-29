@@ -52,6 +52,7 @@ enum PomodoroCommands {
     Start(StartPomodoro),
     Interrupt(InterruptPomodoro),
     Annotate(AnnotatePomodoro),
+    Log(LogPomodoro),
 }
 
 /// Starts a Pomodoro
@@ -78,6 +79,22 @@ struct InterruptPomodoro {
     /// Whether the interruption is internal (self-inflicted) or external (environmental)
     #[clap(short, long, default_value = "internal", value_name = "KIND")]
     kind: String,
+}
+
+/// Log an externally completed pomodoro
+#[derive(Parser)]
+struct LogPomodoro {
+    /// When the pomodoro started (RFC 3339 / ISO 8601)
+    #[clap(long, value_name = "TIMESTAMP")]
+    started_at: Option<String>,
+
+    /// When the pomodoro finished (RFC 3339 / ISO 8601)
+    #[clap(long, value_name = "TIMESTAMP")]
+    finished_at: Option<String>,
+
+    /// Duration in minutes (default: 25). Cannot be used when both --started-at and --finished-at are given.
+    #[clap(short, long, value_name = "MINUTES")]
+    duration: Option<u8>,
 }
 
 /// Annotates a Pomodoro
@@ -277,6 +294,81 @@ fn main() {
                         }
                         process::exit(0);
                     }
+                    Err(err) => {
+                        eprintln!("Error: {}.", err);
+                        process::exit(1);
+                    }
+                }
+            }
+            PomodoroCommands::Log(log_options) => {
+                let (started_at, finished_at) = match (
+                    &log_options.started_at,
+                    &log_options.finished_at,
+                    log_options.duration,
+                ) {
+                    (Some(s), None, dur) => {
+                        let dur = dur.unwrap_or(25) as i64;
+                        let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
+                            eprintln!("Error: {} --started-at: {}", e, s);
+                            process::exit(1);
+                        });
+                        let finished_at = started_at + dur * 60;
+                        (started_at, finished_at)
+                    }
+                    (None, Some(f), dur) => {
+                        let dur = dur.unwrap_or(25) as i64;
+                        let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
+                            eprintln!("Error: {} --finished-at: {}", e, f);
+                            process::exit(1);
+                        });
+                        let started_at = finished_at - dur * 60;
+                        (started_at, finished_at)
+                    }
+                    (Some(s), Some(f), None) => {
+                        let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
+                            eprintln!("Error: {} --started-at: {}", e, s);
+                            process::exit(1);
+                        });
+                        let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
+                            eprintln!("Error: {} --finished-at: {}", e, f);
+                            process::exit(1);
+                        });
+                        (started_at, finished_at)
+                    }
+                    (Some(_), Some(_), Some(_)) => {
+                        eprintln!(
+                            "Error: cannot specify --duration when both --started-at and --finished-at are given."
+                        );
+                        process::exit(1);
+                    }
+                    (None, None, _) => {
+                        eprintln!(
+                            "Error: at least one of --started-at or --finished-at is required."
+                        );
+                        process::exit(1);
+                    }
+                };
+
+                if finished_at < started_at {
+                    eprintln!("Error: --finished-at must be after --started-at.");
+                    process::exit(1);
+                }
+
+                let actual_duration = (finished_at - started_at) / 60;
+
+                if verbose {
+                    println!(
+                        "Logging externally completed pomodoro ({} min)",
+                        actual_duration
+                    );
+                }
+
+                let mut pom = Schedulable::new(0, Kind::Pomodoro, actual_duration);
+                pom.started_at = started_at;
+                pom.finished_at = finished_at;
+
+                match scheduler.log(&pom) {
+                    Ok(_) => {}
                     Err(err) => {
                         eprintln!("Error: {}.", err);
                         process::exit(1);

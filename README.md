@@ -3,21 +3,24 @@ Simple [Pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) timer writte
 # Usage
 
 ```command
-$ rustomato pomodoro [start]                   # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
-$ rustomato pomodoro interrupt                 # Records an interruption on the active (or most recently finished) Pomodoro.
-$ rustomato pomodoro interrupt --kind external # Records an external interruption on the active (or most recently finished) Pomodoro.
-$ rustomato pomodoro annotate <text>           # Annotates the active Pomodoro with the given text.
-$ rustomato break [start]                      # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
+$ rustomato pomodoro [start]         # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
+$ rustomato pomodoro interrupt       # Records an interruption on the active (or most recently finished) Pomodoro.
+$ rustomato pomodoro annotate <text> # Annotates the active, or the most recently completed, Pomodoro with the given text.
+$ rustomato pomodoro log             # Log an externally completed pomodoro.
+$ rustomato break start              # Starts a break. Auto-finishes the currently active Pomodoro if there is one.
 ```
-[1] the running, if there is one, or the most recently completed, or the given
 
 `pomodoro` and `break` will block until the time is over. If the command is interrupted with Control-C (`SIGINT`), the currently running Pomodoro is cancelled immediately. If a break is currently running, it is finished.
 
-The possible application states are valid for an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`, which defaults to `$RUSTOMATO_ROOT/data.db`):
+# Rule #1
 
-The default for `$RUSTOMATO_ROOT` is `$HOME/.rustomato`.
+There must never be more than one pomodoro [XOR](http://en.wikipedia.org/wiki/Xor) break at any given time.
 
-## State Transitions
+This is scoped to an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`).
+
+The enforcement happens at the database level via a trigger that rejects overlapping time ranges, and at the application level in the scheduler.
+
+# State Transitions
 
 ```mermaid
 stateDiagram-v2
@@ -32,16 +35,18 @@ stateDiagram-v2
     Stale --> [*]
 ```
 
+The possible application states are valid for an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`, which defaults to `$RUSTOMATO_ROOT/data.db`). The default for `$RUSTOMATO_ROOT` is `$HOME/.rustomato`.
+
 The key difference between a pomodoro and a break is how they respond to interruptions and cancellation:
 
 * a pomodoro can be interrupted (keeping it running) or cancelled (via SIGINT), whereas
 * a break is simply finished — it does not accept interruptions and SIGINT finishes it rather than cancelling it.
 
-## Hooks
+# Hooks
 
 Rustomato can run user-provided scripts — **hooks** — at key state transitions. Hooks live in `$RUSTOMATO_ROOT/hooks/` and are looked up by exact filename.
 
-### Quick start
+## Quick start
 
 ```sh
 rustomato init
@@ -49,7 +54,7 @@ rustomato init
 
 This creates the `hooks/` directory (inside `$RUSTOMATO_ROOT`) with executable sample scripts for every hook. Each script exits `0` and does nothing by default.
 
-### Available hooks
+## Available hooks
 
 | Hook | Fires | Can abort? |
 |---|---|---|
@@ -63,32 +68,14 @@ This creates the `hooks/` directory (inside `$RUSTOMATO_ROOT`) with executable s
 | `after-interrupt-pomodoro` | Interrupt recorded | no |
 | `before-annotate-pomodoro` | Before an annotation is added | yes |
 | `after-annotate-pomodoro` | Annotation added | no |
+| `before-log-pomodoro` | Before an external pomodoro is logged | yes |
+| `after-log-pomodoro` | External pomodoro logged | no |
 | `before-start-break` | Before a break starts | yes |
 | `after-start-break` | After a break started | no |
 | `before-finish-break` | Break timer expired or Ctrl-C | yes |
 | `after-finish-break` | Break finished | no |
 
-### Interrupts
-
-When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption
-counter is incremented by one. The pomodoro **continues running** -- an interrupt
-does not cancel or finish it.
-
-If no pomodoro is active but a break is running, the interruption is recorded on
-the most recently finished pomodoro.
-
-Interrupt hooks receive two additional environment variables:
-
-| Variable | Example | Description |
-|---|---|---|
-| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
-| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
-
-Use `--kind internal` (default) or `--kind external` to classify the interruption.
-Internal interruptions are self-inflicted (e.g. checking your phone); external ones
-are caused by the environment (e.g. a colleague knocking).
-
-### How hooks are invoked
+## How hooks are invoked
 
 Rustomato executes the hook file directly using the OS `execve`-equivalent, which means the file must be an executable with a valid shebang line or a binary. Any language works:
 
@@ -106,12 +93,12 @@ sys.exit(0)
 
 Hooks that do not have the executable bit (`+x`) set are silently skipped (shown in `--verbose` mode).
 
-### Exit code semantics
+## Exit code semantics
 
 - **`before-*` hooks**: exit `0` to allow the operation to proceed. Any non-zero exit **aborts** the operation, and rustomato exits non-zero itself.
 - **`after-*` hooks**: the operation has already completed. A non-zero exit is logged as a warning (in `--verbose` mode) but has no effect on the operation.
 
-### What hooks receive
+## What hooks receive
 
 **First argument (`$1`):** the hook name, e.g. `before-start-pomodoro`.
 This lets a single script dispatch on the hook name if desired.
@@ -131,7 +118,7 @@ This lets a single script dispatch on the hook name if desired.
 | `RUSTOMATO_INTERRUPT_KIND` | `internal` | Kind of interrupt (`internal` or `external`; interrupt hooks only) |
 | `RUSTOMATO_INTERRUPTIONS` | `2` | Total interruption count on this schedulable (interrupt hooks only) |
 
-### Timeout
+## Timeout
 
 A hook that runs longer than **3 seconds** is killed (`SIGKILL`). This prevents a misbehaving or hanging hook from blocking the timer.
 
@@ -142,7 +129,7 @@ The timeout can be changed via the `RUSTOMATO_HOOK_TIMEOUT` environment variable
 export RUSTOMATO_HOOK_TIMEOUT=10000
 ```
 
-### Security
+## Security
 
 - Only files **inside** `$RUSTOMATO_ROOT/hooks/` are ever executed.
 - Only files with the **executable bit** (`+x`) are invoked; stray files are silently ignored.
@@ -153,7 +140,7 @@ export RUSTOMATO_HOOK_TIMEOUT=10000
   rustomato --no-hooks pomodoro start
   ```
 
-### Examples
+## Examples
 
 **Desktop notification when a pomodoro finishes** (`after-finish-pomodoro`):
 
@@ -186,9 +173,24 @@ echo "$RUSTOMATO_STARTED_AT Cancelled $RUSTOMATO_KIND $RUSTOMATO_UUID" \
 exit 0
 ```
 
+# Interrupts
+
+When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
+
+If no pomodoro is active but a break is running, the interruption is recorded on the most recently finished pomodoro.
+
+Interrupt hooks receive two additional environment variables:
+
+| Variable | Example | Description |
+|---|---|---|
+| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
+| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
+
+Use `--kind internal` (default) or `--kind external` to classify the interruption. Internal interruptions are self-inflicted (e.g. checking your phone); external ones are caused by the environment (e.g. a colleague knocking).
+
 # Installation
 
-### Homebrew
+## Homebrew
 
 ```sh
 brew install suhlig/tap/rustomato
@@ -196,7 +198,7 @@ brew install suhlig/tap/rustomato
 
 This formula automatically installs shell completions for bash, zsh, and fish.
 
-### Manual
+## Manual
 
 | File | Architecture | Typical Hardware |
 |---|---|---|
@@ -212,9 +214,7 @@ This formula automatically installs shell completions for bash, zsh, and fish.
 arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && curl -sL "https://github.com/suhlig/rustomato/releases/latest/download/rustomato-linux-${arch}.tar.gz" | tar xz && sudo mv rustomato /usr/local/bin
 ```
 
-# Release
-
-## Releasing
+# Releasing
 
 > Requires [git-cliff](https://git-cliff.org) (e.g. `brew install git-cliff`) and [cargo-release](https://github.com/crate-ci/cargo-release) (`cargo install cargo-release`)
 
@@ -249,9 +249,7 @@ cargo release patch --dry-run
 
 # TODO
 
-* Auto-update dependencies via PRs
-* `rustomato pomodoro log` logs a finished pomodoro that was completed externally
-* `rustomato stats` command
+* `rustomato stats` or `report` command
 * Add `--force` flag to commands
 * `rustomato pomodoro cancel` cancels the current pomodoro. Fails if there is no current pomodoro.
 * Show progress bar only when attached to a terminal
