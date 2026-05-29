@@ -1293,4 +1293,128 @@ mod acceptance_tests {
             .stdout(predicate::str::contains("Monthly Report"))
             .stdout(predicate::str::contains("completed"));
     }
+
+    // ── Rolling window report ────────────────────────────────────
+
+    #[test]
+    fn report_last_empty() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("last")
+            .arg("--date")
+            .arg("2025-01-15")
+            .arg("--days")
+            .arg("7")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Nothing recorded"));
+    }
+
+    #[test]
+    fn report_last_with_data() {
+        let dir = tempdir().unwrap();
+
+        // Log pomodori on consecutive days
+        for day in ["2026-05-27", "2026-05-28", "2026-05-29"] {
+            rustomato()
+                .env("RUSTOMATO_ROOT", dir.path())
+                .arg("--no-hooks")
+                .arg("pomodoro")
+                .arg("log")
+                .arg("--started-at")
+                .arg(format!("{}T10:00:00Z", day))
+                .arg("--duration")
+                .arg("25")
+                .assert()
+                .success();
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("last")
+            .arg("--date")
+            .arg("2026-05-29")
+            .arg("--days")
+            .arg("3")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("3 completed"))
+            .stdout(predicate::str::contains("Day-by-day"));
+    }
+
+    #[test]
+    fn report_last_single_day() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("last")
+            .arg("--date")
+            .arg("2026-05-29")
+            .arg("--days")
+            .arg("1")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("1 completed"))
+            .stdout(predicate::str::contains("Last 1 day"));
+    }
+
+    #[test]
+    fn report_last_defaults_to_today() {
+        use chrono::Local;
+
+        let dir = tempdir().unwrap();
+
+        let today_midnight = Local::now()
+            .date_naive()
+            .and_hms_opt(10, 0, 0)
+            .unwrap()
+            .and_local_timezone(Local)
+            .earliest()
+            .unwrap();
+        let ts = today_midnight.format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg(&ts)
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("last")
+            .arg("--days")
+            .arg("1")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("completed"));
+    }
 }

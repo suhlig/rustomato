@@ -177,6 +177,8 @@ enum ReportCommands {
     Week(WeekReport),
     /// Monthly productivity report with week-by-week breakdown
     Month(MonthReport),
+    /// Rolling window productivity report
+    Last(LastReport),
     /// Interruption pattern analysis by hour of day and day of week
     Interruptions(InterruptionsReport),
 }
@@ -206,6 +208,17 @@ struct MonthReport {
     /// Number of months to show including this one (for trend comparison). Defaults to 3.
     #[clap(long, default_value = "3", value_name = "MONTHS")]
     months: u32,
+}
+
+/// Rolling window report (last N days)
+#[derive(Parser)]
+struct LastReport {
+    /// End date for the window (YYYY-MM-DD). Defaults to today.
+    #[clap(long, value_name = "DATE")]
+    date: Option<String>,
+    /// Size of the window in days. Defaults to 7.
+    #[clap(long, default_value = "7", value_name = "DAYS")]
+    days: u32,
 }
 
 /// Interruption pattern report
@@ -767,6 +780,13 @@ fn main() {
                     &Repository::from_url(&db_url),
                     month_options.date,
                     month_options.months,
+                );
+            }
+            ReportCommands::Last(last_options) => {
+                rustomato::report::print_last_report(
+                    &Repository::from_url(&db_url),
+                    last_options.date,
+                    last_options.days,
                 );
             }
         },
