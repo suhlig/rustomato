@@ -175,6 +175,8 @@ struct ReportCommand {
 enum ReportCommands {
     Day(DayReport),
     Week(WeekReport),
+    /// Monthly productivity report with week-by-week breakdown
+    Month(MonthReport),
     /// Interruption pattern analysis by hour of day and day of week
     Interruptions(InterruptionsReport),
 }
@@ -193,6 +195,17 @@ struct WeekReport {
     /// A date within the target week (YYYY-MM-DD). Defaults to today.
     #[clap(long, value_name = "DATE")]
     date: Option<String>,
+}
+
+/// Monthly productivity report
+#[derive(Parser)]
+struct MonthReport {
+    /// A date within the target month (YYYY-MM or YYYY-MM-DD). Defaults to the current month.
+    #[clap(long, value_name = "DATE")]
+    date: Option<String>,
+    /// Number of months to show including this one (for trend comparison). Defaults to 3.
+    #[clap(long, default_value = "3", value_name = "MONTHS")]
+    months: u32,
 }
 
 /// Interruption pattern report
@@ -747,6 +760,13 @@ fn main() {
                     &Repository::from_url(&db_url),
                     int_options.date,
                     int_options.days,
+                );
+            }
+            ReportCommands::Month(month_options) => {
+                rustomato::report::print_month_report(
+                    &Repository::from_url(&db_url),
+                    month_options.date,
+                    month_options.months,
                 );
             }
         },

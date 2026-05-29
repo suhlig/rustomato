@@ -86,7 +86,7 @@ impl InterruptionKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InterruptLog {
     pub uuid: SqlUuid,
     pub schedulable_uuid: SqlUuid,
@@ -94,7 +94,7 @@ pub struct InterruptLog {
     pub created_at: i64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Schedulable {
     pub pid: u32,
     pub kind: Kind,
