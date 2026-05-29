@@ -362,6 +362,41 @@ impl Repository {
     }
 
     /// Fetch all schedulables within a time range (inclusive), ordered by started_at.
+    pub fn annotations_between(
+        &self,
+        start: i64,
+        end: i64,
+    ) -> Result<Vec<Annotation>, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, schedulable_uuid, body, created_at \
+             FROM annotations \
+             WHERE created_at >= ?1 AND created_at <= ?2 \
+             ORDER BY created_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![start, end], |row| {
+                let uuid_str: String = row.get(0)?;
+                let sched_uuid_str: String = row.get(1)?;
+                Ok(Annotation {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+                    body: row.get(2).expect("unable to fetch body"),
+                    created_at: row.get(3).expect("unable to fetch created_at"),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
+    }
+
     pub fn entries_between(
         &self,
         start: i64,

@@ -3,7 +3,7 @@ use clap_complete::{Shell, generate};
 use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
-use rustomato::{InterruptionKind, Kind, Schedulable, Status};
+use rustomato::{Annotation, InterruptionKind, Kind, Schedulable, Status};
 use std::io;
 use std::path::*;
 use std::{env, process};
@@ -594,6 +594,7 @@ fn main() {
         SubCommands::Report(report_options) => match report_options.subcmd {
             ReportCommands::Day(day_options) => {
                 use chrono::{Local, NaiveDate};
+                use std::collections::HashMap;
 
                 let date = match &day_options.date {
                     Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_else(|e| {
@@ -635,14 +636,78 @@ fn main() {
                     }
                 };
 
+                let annotations = match repo.annotations_between(start_of_day, end_of_day) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(1);
+                    }
+                };
+
+                // Group annotations by schedulable UUID for lookup
+                let mut ann_by_uuid: HashMap<String, Vec<&Annotation>> = HashMap::new();
+                for a in &annotations {
+                    ann_by_uuid
+                        .entry(a.schedulable_uuid.to_string())
+                        .or_default()
+                        .push(a);
+                }
+
+                // ── Print header ──────────────────────────────────
+                let day_name = date.format("%A");
+                println!("Report for {} ({})", date, day_name);
+                println!("{}\n", "─".repeat(35));
+
                 if entries.is_empty() {
-                    println!("Report for {} ({})", date, date.format("%A"));
-                    println!("{}\n", "─".repeat(35));
                     println!("Nothing recorded for this day.");
                     process::exit(0);
                 }
 
-                // --- Core metrics ---
+                // ── Entry list with annotations ────────────────────
+                for entry in &entries {
+                    let start = format_time(entry.started_at);
+                    let end = if entry.finished_at != 0 {
+                        format_time(entry.finished_at)
+                    } else if entry.cancelled_at != 0 {
+                        format_time(entry.cancelled_at)
+                    } else {
+                        "...".to_string()
+                    };
+
+                    let status_icon = match entry.status() {
+                        Status::Finished => "\u{2713}",
+                        Status::Cancelled => "\u{2717}",
+                        Status::Active => "\u{2026}",
+                        Status::Stale => "?",
+                        Status::New => "?",
+                    };
+
+                    let interrupt_info = if entry.interruptions > 0 {
+                        format!(" ({} int.)", entry.interruptions)
+                    } else {
+                        String::new()
+                    };
+
+                    println!(
+                        " {:>5} - {:<5}  {:<9} ({:>2} min)  {}{}",
+                        start,
+                        end,
+                        format!("{}", entry.kind),
+                        entry.duration,
+                        status_icon,
+                        interrupt_info,
+                    );
+
+                    // Annotations for this entry
+                    if let Some(notes) = ann_by_uuid.get(&entry.uuid.to_string()) {
+                        for note in notes {
+                            println!("    \u{2192} {}", note.body);
+                        }
+                    }
+                }
+                println!();
+
+                // ── Summary metrics ────────────────────────────────
                 let pomodori_completed = entries
                     .iter()
                     .filter(|e| e.kind == Kind::Pomodoro && e.finished_at != 0)
@@ -710,25 +775,19 @@ fn main() {
                     })
                     .0;
 
-                // --- Print the report ---
-                let day_name = date.format("%A");
-                println!("Report for {} ({})", date, day_name);
-                println!("{}", "─".repeat(35));
-                println!();
-
                 println!(
-                    "Pomodori    {} completed  ·  {} cancelled  ·  {}% completion rate",
+                    "Pomodori    {} completed  \u{00b7}  {} cancelled  \u{00b7}  {}% completion rate",
                     pomodori_completed, pomodori_cancelled, completion_rate
                 );
                 println!(
-                    "Breaks      {} taken      ·  {} cancelled",
+                    "Breaks      {} taken      \u{00b7}  {} cancelled",
                     breaks_taken, breaks_cancelled
                 );
                 if pomodori_completed > 0 && breaks_taken > 0 {
                     let ratio_indicator = if (0.5..=2.0).contains(&break_ratio) {
-                        "✓"
+                        "\u{2713}"
                     } else {
-                        "⚠"
+                        "\u{26a0}"
                     };
                     println!(
                         "Ratio       {:.1} break per pomodoro  {}",
@@ -792,6 +851,19 @@ fn main() {
         },
         SubCommands::Completions(_) => unreachable!(),
     };
+}
+
+/// Format a Unix timestamp as "HH:MM".
+fn format_time(timestamp: i64) -> String {
+    use chrono::{Local, TimeZone};
+    if timestamp == 0 {
+        return "N/A".to_string();
+    }
+    Local
+        .timestamp_opt(timestamp, 0)
+        .single()
+        .map(|dt| dt.format("%H:%M").to_string())
+        .unwrap_or_else(|| timestamp.to_string())
 }
 
 /// Read annotation text from positional args or stdin.
