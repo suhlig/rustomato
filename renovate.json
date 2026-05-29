@@ -1,6 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "mode": "full",
+  "internalChecksFilter": "strict",
+  "rebaseWhen": "behind-base-branch",
   "labels": ["dependencies"],
   "minimumReleaseAge": "3 days",
   "packageRules": [
