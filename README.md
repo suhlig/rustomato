@@ -249,6 +249,11 @@ cargo release patch --dry-run
 
 # TODO
 
-* Add `--force` flag to commands
 * `rustomato pomodoro cancel` cancels the current pomodoro. Fails if there is no current pomodoro.
+* `rustomato pomodoro list` shows a list of all pomodori that were attempted or completed today.
+* `rustomato pomodoro annotate --target <GUID>` adds an annotation to the pomodoro with the given GUID.
+  - When the symbolic `--target -1` is specified, the annotation is added to the most recent pomodoro (i.e. the one that was most recently completed). Extend that pattern to `-2` until `-9` for the most recent pomodori, even if they were earlier than today.
+  - When the argument to `--target` can be interpreted as a timestamp that falls into one of the most recent pomodori, the annotation is added to that pomodoro.
 * Show progress bar only when attached to a terminal
+  - Should we make this a full TUI using Ratatui? Where does it end?
+* Does a CSV export of pomodori and breaks make sense for externally created reports?

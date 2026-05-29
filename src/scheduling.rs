@@ -256,8 +256,42 @@ impl Scheduler {
         Ok(saved)
     }
 
-    pub fn run(&self, mut schedulable: Schedulable) -> Result<Schedulable, SchedulingError> {
+    pub fn run(
+        &self,
+        mut schedulable: Schedulable,
+        force: bool,
+    ) -> Result<Schedulable, SchedulingError> {
         schedulable.started_at = now();
+
+        // --- force: kill any existing active schedulable, then cancel/finish it ---
+        if force && let Ok(Some(active)) = self.repo.active() {
+            // Kill the process if it's still alive
+            if super::pid_is_alive(active.pid) {
+                eprintln!("Killing active pid {} ...", active.pid);
+                super::kill_process(active.pid);
+            }
+
+            match active.kind {
+                Kind::Pomodoro => {
+                    self.run_hook(HookEvent::BeforeCancelPomodoro, &active)?;
+                    let mut cancelled = active;
+                    cancelled.cancelled_at = now();
+                    self.repo
+                        .save(&cancelled)
+                        .expect("Unable to persist force-cancelled pomodoro");
+                    self.run_hook_after(HookEvent::AfterCancelPomodoro, &cancelled);
+                }
+                Kind::Break => {
+                    self.run_hook(HookEvent::BeforeFinishBreak, &active)?;
+                    let mut finished = active;
+                    finished.finished_at = now();
+                    self.repo
+                        .save(&finished)
+                        .expect("Unable to persist force-finished break");
+                    self.run_hook_after(HookEvent::AfterFinishBreak, &finished);
+                }
+            }
+        }
 
         // --- before-start-{kind} ---
         let event = match schedulable.kind {

@@ -125,13 +125,29 @@ impl Kind {
 }
 
 /// Returns true if the given PID exists on the system (cross-platform via POSIX kill(0)).
-fn pid_is_alive(pid: u32) -> bool {
+pub(crate) fn pid_is_alive(pid: u32) -> bool {
     unsafe {
         if libc::kill(pid as i32, 0) == 0 {
             true
         } else {
             // ESRCH means "no such process"; anything else (e.g. EPERM) means it exists.
             std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+        }
+    }
+}
+
+/// Kill a process by PID. Sends SIGTERM first, waits briefly, then SIGKILL if still alive.
+pub(crate) fn kill_process(pid: u32) {
+    // Send SIGTERM for a graceful shutdown
+    unsafe {
+        libc::kill(pid as i32, libc::SIGTERM);
+    }
+    // Give it a moment to exit cleanly
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    // If still alive, escalate to SIGKILL
+    if pid_is_alive(pid) {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
         }
     }
 }

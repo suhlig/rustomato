@@ -70,6 +70,10 @@ struct StartPomodoro {
         value_name("DURATION")
     )]
     duration: u8,
+
+    /// Cancel whatever may currently be running before starting the pomodoro
+    #[clap(short, long)]
+    force: bool,
 }
 
 /// Finishes the active Pomodoro
@@ -319,7 +323,7 @@ fn main() {
                     println!("Starting {}", pom);
                 }
 
-                match scheduler.run(pom) {
+                match scheduler.run(pom, start_pomodoro_options.force) {
                     Ok(completed_pom) => {
                         if verbose {
                             println!("\n{}", completed_pom);
@@ -548,7 +552,7 @@ fn main() {
                     println!("Starting {}", br3ak);
                 }
 
-                match scheduler.run(br3ak) {
+                match scheduler.run(br3ak, start_break_options.force) {
                     Ok(completed_break) => {
                         if verbose {
                             println!("\n{}", completed_break);
