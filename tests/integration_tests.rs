@@ -484,6 +484,136 @@ mod integration_tests {
         let result = repo.save_external_finished(&adjacent);
         assert!(result.is_ok());
     }
+
+    // --- entries_between -----------------------------------------------------
+
+    #[test]
+    fn entries_between_empty() {
+        let repo = Repository::new("file::memory:");
+        let entries = repo.entries_between(0, 1000).expect("querying entries");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn entries_between_returns_entries_in_range() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing");
+
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 3000;
+        repo.save(&brk).expect("saving break");
+        brk.finished_at = 3300;
+        repo.save(&brk).expect("finishing break");
+
+        // Range covering both entries
+        let all = repo.entries_between(0, 4000).expect("querying all");
+        assert_eq!(all.len(), 2);
+
+        // Range covering only the first
+        let first = repo.entries_between(0, 2500).expect("querying first");
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].started_at, 1000);
+
+        // Range covering only the second
+        let second = repo.entries_between(2501, 4000).expect("querying second");
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].started_at, 3000);
+
+        // Range before both
+        let none = repo.entries_between(0, 999).expect("querying none");
+        assert!(none.is_empty());
+    }
+
+    // --- save_interrupt / interrupts_between ---------------------------------
+
+    #[test]
+    fn save_interrupt_and_query() {
+        use rustomato::{InterruptLog, InterruptionKind};
+
+        let repo = Repository::new("file::memory:");
+
+        // First create a finished pomodoro to reference
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        let saved = repo.save(&pom).expect("finishing");
+
+        // Save two interrupt logs referencing it
+        let log1 = InterruptLog {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            kind: InterruptionKind::Internal,
+            created_at: 1100,
+        };
+        repo.save_interrupt(&log1).expect("saving interrupt log 1");
+
+        let log2 = InterruptLog {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            kind: InterruptionKind::External,
+            created_at: 1200,
+        };
+        repo.save_interrupt(&log2).expect("saving interrupt log 2");
+
+        // Query all interrupts in range
+        let logs = repo
+            .interrupts_between(1000, 2000)
+            .expect("querying interrupts");
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0].kind, InterruptionKind::Internal);
+        assert_eq!(logs[1].kind, InterruptionKind::External);
+
+        // Query a sub-range
+        let sub = repo
+            .interrupts_between(1150, 1250)
+            .expect("querying subrange");
+        assert_eq!(sub.len(), 1);
+        assert_eq!(sub[0].kind, InterruptionKind::External);
+
+        // Query outside range
+        let none = repo.interrupts_between(0, 1000).expect("querying none");
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn save_interrupt_updates_counter_on_schedulable() {
+        use rustomato::{InterruptLog, InterruptionKind};
+
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        let saved = repo.save(&pom).expect("finishing");
+
+        // Record interrupt through the scheduler-like sequence:
+        // increment counter + save log
+        repo.record_interrupt(saved.uuid)
+            .expect("recording interrupt");
+        let log = InterruptLog {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: saved.uuid,
+            kind: InterruptionKind::Internal,
+            created_at: 1100,
+        };
+        repo.save_interrupt(&log).expect("saving interrupt log");
+
+        // Counter and log should agree
+        let schedulable = repo.find_by_uuid(saved.uuid).expect("finding");
+        assert_eq!(schedulable.interruptions, 1);
+
+        let logs = repo
+            .interrupts_between(0, 9999)
+            .expect("querying interrupts");
+        assert_eq!(logs.len(), 1);
+    }
 }
 
 // --- parse_timestamp ---------------------------------------------------------

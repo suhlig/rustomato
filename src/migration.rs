@@ -19,6 +19,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "V6__domain_constraints",
         include_str!("../migrations/V6__domain_constraints.sql"),
     ),
+    (
+        "V7__interrupt_log",
+        include_str!("../migrations/V7__interrupt_log.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) {

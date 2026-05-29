@@ -32,6 +32,8 @@ enum SubCommands {
     Break(BreakCommand),
     Status(StatusCommand),
     Journal(JournalCommand),
+    /// Generate a productivity report
+    Report(ReportCommand),
     #[clap(hide = true)]
     Completions(CompletionsCommand),
 }
@@ -160,6 +162,26 @@ struct CompletionsCommand {
     /// The shell to generate completions for
     #[clap(value_enum)]
     shell: Shell,
+}
+
+/// Generate a productivity report
+#[derive(Parser)]
+struct ReportCommand {
+    #[clap(subcommand)]
+    subcmd: ReportCommands,
+}
+
+#[derive(Parser)]
+enum ReportCommands {
+    Day(DayReport),
+}
+
+/// Daily productivity report
+#[derive(Parser)]
+struct DayReport {
+    /// Date in ISO 8601 format (YYYY-MM-DD). Defaults to today.
+    #[clap(long, value_name = "DATE")]
+    date: Option<String>,
 }
 
 fn main() {
@@ -518,6 +540,178 @@ fn main() {
                         eprintln!("Error: {}.", err);
                         process::exit(1);
                     }
+                }
+            }
+        },
+        SubCommands::Report(report_options) => match report_options.subcmd {
+            ReportCommands::Day(day_options) => {
+                use chrono::{Local, NaiveDate};
+
+                let date = match &day_options.date {
+                    Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_else(|e| {
+                        eprintln!(
+                            "Error: invalid date '{}': {}. Expected format: YYYY-MM-DD",
+                            d, e
+                        );
+                        process::exit(1);
+                    }),
+                    None => Local::now().date_naive(),
+                };
+
+                let start_of_day = date
+                    .and_hms_opt(0, 0, 0)
+                    .and_then(|dt| dt.and_local_timezone(Local).earliest())
+                    .map(|dt| dt.timestamp())
+                    .unwrap_or(0);
+                let end_of_day = date
+                    .and_hms_opt(23, 59, 59)
+                    .and_then(|dt| dt.and_local_timezone(Local).earliest())
+                    .map(|dt| dt.timestamp())
+                    .unwrap_or(i64::MAX);
+
+                let repo = Repository::from_url(&db_url);
+
+                let entries = match repo.entries_between(start_of_day, end_of_day) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(1);
+                    }
+                };
+
+                let interrupt_logs = match repo.interrupts_between(start_of_day, end_of_day) {
+                    Ok(l) => l,
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(1);
+                    }
+                };
+
+                if entries.is_empty() {
+                    println!("Report for {} ({})", date, date.format("%A"));
+                    println!("{}\n", "─".repeat(35));
+                    println!("Nothing recorded for this day.");
+                    process::exit(0);
+                }
+
+                // --- Core metrics ---
+                let pomodori_completed = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Pomodoro && e.finished_at != 0)
+                    .count();
+                let pomodori_cancelled = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Pomodoro && e.cancelled_at != 0)
+                    .count();
+                let breaks_taken = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Break && e.finished_at != 0)
+                    .count();
+                let breaks_cancelled = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Break && e.cancelled_at != 0)
+                    .count();
+
+                let total_pomodori = pomodori_completed + pomodori_cancelled;
+                let completion_rate = if total_pomodori > 0 {
+                    (pomodori_completed as f64 / total_pomodori as f64 * 100.0) as u32
+                } else {
+                    0
+                };
+
+                // --- Interruption stats ---
+                let total_interruptions: i64 = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Pomodoro)
+                    .map(|e| e.interruptions)
+                    .sum();
+
+                let internal_count = interrupt_logs
+                    .iter()
+                    .filter(|l| l.kind == InterruptionKind::Internal)
+                    .count();
+                let external_count = interrupt_logs
+                    .iter()
+                    .filter(|l| l.kind == InterruptionKind::External)
+                    .count();
+
+                let avg_interruptions = if pomodori_completed > 0 {
+                    total_interruptions as f64 / pomodori_completed as f64
+                } else {
+                    0.0
+                };
+
+                // --- Break ratio ---
+                let break_ratio = if pomodori_completed > 0 {
+                    breaks_taken as f64 / pomodori_completed as f64
+                } else {
+                    0.0
+                };
+
+                // --- Longest uninterrupted sequence (focus block) ---
+                let max_focus_block = entries
+                    .iter()
+                    .filter(|e| e.kind == Kind::Pomodoro && e.finished_at != 0)
+                    .fold((0usize, 0usize), |(max, current), pom| {
+                        if pom.interruptions == 0 {
+                            let new_current = current + 1;
+                            (max.max(new_current), new_current)
+                        } else {
+                            (max, 0)
+                        }
+                    })
+                    .0;
+
+                // --- Print the report ---
+                let day_name = date.format("%A");
+                println!("Report for {} ({})", date, day_name);
+                println!("{}", "─".repeat(35));
+                println!();
+
+                println!(
+                    "Pomodori    {} completed  ·  {} cancelled  ·  {}% completion rate",
+                    pomodori_completed, pomodori_cancelled, completion_rate
+                );
+                println!(
+                    "Breaks      {} taken      ·  {} cancelled",
+                    breaks_taken, breaks_cancelled
+                );
+                if pomodori_completed > 0 && breaks_taken > 0 {
+                    let ratio_indicator = if (0.5..=2.0).contains(&break_ratio) {
+                        "✓"
+                    } else {
+                        "⚠"
+                    };
+                    println!(
+                        "Ratio       {:.1} break per pomodoro  {}",
+                        break_ratio, ratio_indicator
+                    );
+                }
+                println!();
+
+                if max_focus_block > 1 {
+                    println!(
+                        "Longest focus block:  {} consecutive pomodori without interruption",
+                        max_focus_block
+                    );
+                    println!();
+                }
+
+                println!("Interruptions");
+                println!(
+                    "  Total:      {} ({:.1} avg per pomodoro)",
+                    total_interruptions, avg_interruptions
+                );
+                let total_logged = internal_count + external_count;
+                if total_logged > 0 {
+                    let internal_pct = (internal_count as f64 / total_logged as f64 * 100.0) as u32;
+                    let external_pct = (external_count as f64 / total_logged as f64 * 100.0) as u32;
+                    println!("  Internal:   {} ({}%)", internal_count, internal_pct);
+                    println!("  External:   {} ({}%)", external_count, external_pct);
+                } else if total_interruptions > 0 {
+                    println!(
+                        "  (Kind breakdown not available for interruptions recorded before the upgrade)"
+                    );
                 }
             }
         },

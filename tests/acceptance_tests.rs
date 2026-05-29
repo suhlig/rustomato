@@ -749,4 +749,142 @@ mod acceptance_tests {
             .assert()
             .success();
     }
+
+    // --- report day -----------------------------------------------------------
+
+    #[test]
+    fn report_day_empty() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("day")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Nothing recorded for this day."));
+    }
+
+    #[test]
+    fn report_day_with_logged_pomodoro() {
+        let dir = tempdir().unwrap();
+
+        // Log a pomodoro
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("day")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Pomodori"))
+            .stdout(predicate::str::contains("1 completed"))
+            .stdout(predicate::str::contains("100% completion rate"));
+    }
+
+    #[test]
+    fn report_day_with_multiple_entries() {
+        let dir = tempdir().unwrap();
+
+        // Log two pomodori
+        for hour in [10, 11] {
+            rustomato()
+                .env("RUSTOMATO_ROOT", dir.path())
+                .arg("--no-hooks")
+                .arg("pomodoro")
+                .arg("log")
+                .arg("--started-at")
+                .arg(format!("2026-05-29T{:02}:00:00Z", hour))
+                .arg("--duration")
+                .arg("25")
+                .assert()
+                .success();
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("day")
+            .arg("--date")
+            .arg("2026-05-29")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Pomodori"))
+            .stdout(predicate::str::contains("2 completed"))
+            .stdout(predicate::str::contains("0 cancelled"));
+    }
+
+    #[test]
+    fn report_day_invalid_date() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("day")
+            .arg("--date")
+            .arg("not-a-date")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("invalid date"));
+    }
+
+    #[test]
+    fn report_day_defaults_to_today() {
+        use chrono::Local;
+
+        let dir = tempdir().unwrap();
+
+        // Log a pomodoro at a time that falls on today's date (local time)
+        let today_midnight = Local::now()
+            .date_naive()
+            .and_hms_opt(10, 0, 0)
+            .unwrap()
+            .and_local_timezone(Local)
+            .earliest()
+            .unwrap();
+        let ts = today_midnight.format("%Y-%m-%dT%H:%M:%S").to_string();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("log")
+            .arg("--started-at")
+            .arg(&ts)
+            .arg("--duration")
+            .arg("25")
+            .assert()
+            .success();
+
+        // Report without --date should pick up today's entries
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("report")
+            .arg("day")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Pomodori"))
+            .stdout(predicate::str::contains("1 completed"));
+    }
 }

@@ -1,6 +1,6 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
-use super::{Annotation, InterruptionKind, Kind, Schedulable, SqlUuid};
+use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
 use pbr::ProgressBar;
 use std::fmt;
 use std::path::PathBuf;
@@ -173,6 +173,17 @@ impl Scheduler {
         let updated = self
             .repo
             .record_interrupt(target.uuid)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        // Save to interrupt log
+        let interrupt_log = InterruptLog {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: target.uuid,
+            kind,
+            created_at: now(),
+        };
+        self.repo
+            .save_interrupt(&interrupt_log)
             .map_err(|_| SchedulingError::ExecutionError)?;
 
         // Run after-interrupt hook

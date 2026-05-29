@@ -1,4 +1,4 @@
-use super::{Annotation, Kind, Schedulable, SqlUuid, Status};
+use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid, Status};
 use rusqlite::Connection;
 use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OpenFlags;
@@ -43,9 +43,16 @@ impl Repository {
                 | OpenFlags::SQLITE_OPEN_URI,
         )
         .expect("opening database connection");
+        // Foreign key enforcement must be OFF during migrations because
+        // V6 drops and recreates the schedulables table, and V4 has already
+        // created the annotations table with a FK reference to schedulables.
+        // With FKs ON, SQLite would reject the DROP TABLE when annotation
+        // rows exist. Enforcement is re-enabled after migrations complete.
+        db.execute_batch("PRAGMA foreign_keys = OFF;")
+            .expect("disabling foreign key enforcement for migration");
+        crate::migration::run(&db);
         db.execute_batch("PRAGMA foreign_keys = ON;")
             .expect("enabling foreign key enforcement");
-        crate::migration::run(&db);
         Self { db }
     }
 
@@ -296,6 +303,103 @@ impl Repository {
             Err(QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
         }
+    }
+
+    /// Save an interrupt log entry.
+    pub fn save_interrupt(&self, log: &InterruptLog) -> Result<InterruptLog, PersistenceError> {
+        let uuid = log.uuid.to_string();
+        let schedulable_uuid = log.schedulable_uuid.to_string();
+
+        match self.db.execute(
+            "INSERT INTO interrupt_log (uuid, schedulable_uuid, kind, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![uuid, schedulable_uuid, log.kind.as_str(), log.created_at],
+        ) {
+            Ok(_) => Ok(InterruptLog {
+                uuid: log.uuid,
+                schedulable_uuid: log.schedulable_uuid,
+                kind: log.kind,
+                created_at: log.created_at,
+            }),
+            Err(e) => Err(PersistenceError::CannotSave(format!("{}", e))),
+        }
+    }
+
+    /// Fetch interrupt logs within a time range (inclusive), ordered by created_at.
+    pub fn interrupts_between(
+        &self,
+        start: i64,
+        end: i64,
+    ) -> Result<Vec<InterruptLog>, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, schedulable_uuid, kind, created_at \
+             FROM interrupt_log \
+             WHERE created_at >= ?1 AND created_at <= ?2 \
+             ORDER BY created_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![start, end], |row| {
+                let uuid_str: String = row.get(0)?;
+                let sched_uuid_str: String = row.get(1)?;
+                let kind_str: String = row.get(2)?;
+                Ok(InterruptLog {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+                    kind: InterruptionKind::from(&kind_str).expect("invalid interrupt kind in DB"),
+                    created_at: row.get(3).expect("unable to fetch created_at"),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
+    }
+
+    /// Fetch all schedulables within a time range (inclusive), ordered by started_at.
+    pub fn entries_between(
+        &self,
+        start: i64,
+        end: i64,
+    ) -> Result<Vec<Schedulable>, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             WHERE started_at >= ?1 AND started_at <= ?2 \
+             ORDER BY started_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![start, end], |row| {
+                let uuid_str: String = row.get(0)?;
+                let kind_str: String = row.get(1)?;
+                Ok(Schedulable {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    kind: Kind::from(kind_str)
+                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
+                    pid: row.get(2).unwrap_or(0),
+                    duration: row.get(3).unwrap_or(0),
+                    started_at: row.get(4).unwrap_or(0),
+                    finished_at: row.get(5).unwrap_or(0),
+                    cancelled_at: row.get(6).unwrap_or(0),
+                    interruptions: row.get(7).unwrap_or(0),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
     }
 
     /// Directly insert a finished pomodoro (for external log).
