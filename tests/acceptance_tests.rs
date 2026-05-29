@@ -47,7 +47,7 @@ mod acceptance_tests {
         // The hooks directory exists
         assert!(dir.path().join("hooks").is_dir());
 
-        // All sample hooks are present and executable
+        // All sample hooks are present and not executable by default
         for name in rustomato::hooks::HookEvent::ALL {
             let path = dir.path().join("hooks").join(name);
             assert!(path.is_file(), "missing hook: {}", name);
@@ -55,8 +55,8 @@ mod acceptance_tests {
             let meta = path.metadata().unwrap();
             assert!(meta.is_file());
             assert!(
-                meta.permissions().mode() & 0o111 != 0,
-                "hook not executable: {}",
+                meta.permissions().mode() & 0o111 == 0,
+                "hook should not be executable by default: {}",
                 name
             );
         }
@@ -250,6 +250,13 @@ mod acceptance_tests {
             .arg("init")
             .assert()
             .success();
+
+        // Make hooks executable so they actually run
+        use std::os::unix::fs::PermissionsExt;
+        for name in rustomato::hooks::HookEvent::ALL {
+            let path = dir.path().join("hooks").join(name);
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
 
         // Use log instead of start to avoid blocking on timer
         rustomato()

@@ -206,6 +206,8 @@ pub fn run_hook(event: HookEvent, context: &HookContext, no_hooks: bool) -> Resu
 
     if context.verbose {
         eprintln!("  Running hook {}...", event.filename());
+    } else {
+        println!("\u{2502} [hook:{}]", event.filename());
     }
 
     execute_hook(&hook_path, event, context, hook_timeout())
@@ -285,7 +287,10 @@ fn execute_hook(
 }
 
 /// Create the hooks directory under `root` and populate it with sample
-/// (executable) hook scripts that just exit 0.
+/// (non-executable) hook scripts that just exit 0.
+///
+/// Hooks are created without the executable bit by design — only hooks you
+/// explicitly `chmod +x` will run. This keeps the default noise-free.
 pub fn init(root: &Path) -> std::io::Result<()> {
     let hooks_dir = root.join("hooks");
     std::fs::create_dir_all(&hooks_dir)?;
@@ -295,7 +300,6 @@ pub fn init(root: &Path) -> std::io::Result<()> {
         if !hook_path.exists() {
             let content = sample_hook_content(hook_name);
             std::fs::write(&hook_path, content)?;
-            std::fs::set_permissions(&hook_path, std::fs::Permissions::from_mode(0o755))?;
         }
     }
 
@@ -306,6 +310,10 @@ fn sample_hook_content(hook_name: &str) -> String {
     format!(
         r#"#!/usr/bin/env sh
 # rustomato hook: {}
+#
+# This hook is created without the executable bit. To enable it:
+#
+#   chmod +x "${{RUSTOMATO_ROOT:=\$HOME/.rustomato}}/hooks/{}"
 #
 # Arguments:
 #   $1 - hook name (always '{}')
@@ -323,7 +331,7 @@ fn sample_hook_content(hook_name: &str) -> String {
 
 exit 0
 "#,
-        hook_name, hook_name
+        hook_name, hook_name, hook_name
     )
 }
 
