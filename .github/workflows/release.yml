@@ -69,7 +69,7 @@ jobs:
         run: |
           echo "darwin_arm64=$(sha256sum artifacts/rustomato-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*.tar.gz
           body_path: release-notes.md
