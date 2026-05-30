@@ -338,3 +338,4 @@ check.
 * Update this document whenever changes are made to the project.
 * Run `pre-commit run --all-files` as a signal whether changes would be accepted.
 * Format commit messages using the [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) specification. Be concise and descriptive and focus primarily on the why, not the what of the commit.
+* Keep prose paragraphs in markdown files on a single line. The editor wraps them — don't hard-wrap prose at 80 chars. Code blocks, tables, lists, and shell continuations (`\\`) can keep their existing line breaks, but narrative text should not be split across lines.
