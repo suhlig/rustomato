@@ -345,6 +345,43 @@ impl Repository {
         Ok(result)
     }
 
+    /// Fetch the most recent `limit` entries, ordered by started_at descending.
+    pub fn list(&self, limit: i64) -> Result<Vec<Schedulable>, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             ORDER BY started_at DESC \
+             LIMIT ?1",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                let uuid_str: String = row.get(0)?;
+                let kind_str: String = row.get(1)?;
+                Ok(Schedulable {
+                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+                    kind: Kind::from(kind_str)
+                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
+                    pid: row.get(2).unwrap_or(0),
+                    duration: row.get(3).unwrap_or(0),
+                    started_at: row.get(4).unwrap_or(0),
+                    finished_at: row.get(5).unwrap_or(0),
+                    cancelled_at: row.get(6).unwrap_or(0),
+                    interruptions: row.get(7).unwrap_or(0),
+                })
+            })
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
+    }
+
     pub fn entries_between(
         &self,
         start: i64,

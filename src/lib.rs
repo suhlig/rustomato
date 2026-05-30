@@ -1,6 +1,7 @@
 use rusqlite::Result;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::types::{ToSql, ToSqlOutput};
+use std::collections::HashSet;
 use std::fmt;
 use uuid::Uuid;
 
@@ -312,6 +313,30 @@ pub fn parse_timestamp(s: &str) -> Result<i64, String> {
         "cannot parse '{}' as a timestamp; expected RFC 3339 (e.g. 2026-05-29T14:30:00Z) or Unix timestamp",
         s
     ))
+}
+
+/// Given a list of UUIDs, find the shortest prefix length (minimum 6) that makes
+/// all entries unique, and return the abbreviated strings using that same length.
+pub fn abbreviate_uuids(uuids: &[SqlUuid]) -> Vec<String> {
+    if uuids.is_empty() {
+        return vec![];
+    }
+
+    let strings: Vec<String> = uuids.iter().map(|u| u.to_string()).collect();
+    let n = strings.len();
+
+    for prefix_len in 6..=32 {
+        let unique: HashSet<&str> = strings.iter().map(|s| &s[..prefix_len]).collect();
+        if unique.len() == n {
+            return strings
+                .iter()
+                .map(|s| s[..prefix_len].to_string())
+                .collect();
+        }
+    }
+
+    // Full UUIDs as fallback (should never be reached with UUIDv4)
+    strings
 }
 
 pub fn format_timestamp(timestamp: i64) -> String {

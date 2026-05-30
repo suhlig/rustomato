@@ -3,7 +3,7 @@ use clap_complete::{Shell, generate};
 use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
-use rustomato::{Annotation, InterruptionKind, Kind, Schedulable, Status};
+use rustomato::{Annotation, InterruptionKind, Kind, Schedulable, Status, abbreviate_uuids};
 use std::io;
 use std::path::*;
 use std::{env, process};
@@ -31,6 +31,8 @@ enum SubCommands {
     Pomodoro(PomodoroCommand),
     Break(BreakCommand),
     Status(StatusCommand),
+    /// List recent pomodori and breaks
+    List(ListCommand),
     /// Generate a productivity report
     Report(ReportCommand),
     #[clap(hide = true)]
@@ -166,6 +168,14 @@ struct FinishBreak {}
 /// Report status
 #[derive(Parser)]
 struct StatusCommand {}
+
+/// List recent pomodori and breaks
+#[derive(Parser)]
+struct ListCommand {
+    /// Maximum number of entries to show
+    #[clap(short, long, default_value = "10")]
+    limit: u32,
+}
 
 /// Generate shell completions
 #[derive(Parser)]
@@ -506,6 +516,77 @@ fn main() {
                 Err(e) => {
                     eprintln!("{}", e)
                 }
+            }
+        }
+
+        SubCommands::List(list_options) => {
+            if list_options.limit == 0 {
+                eprintln!("Error: --limit must be > 0.");
+                process::exit(1);
+            }
+
+            let repo = Repository::from_url(&db_url);
+            let entries = match repo.list(list_options.limit as i64) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("Error: {}.", e);
+                    process::exit(1);
+                }
+            };
+
+            if entries.is_empty() {
+                println!("No entries found.");
+                process::exit(0);
+            }
+
+            let uuids: Vec<_> = entries.iter().map(|s| s.uuid).collect();
+            let abbreviations = abbreviate_uuids(&uuids);
+            let uuid_width = abbreviations.first().map(|s| s.len()).unwrap_or(6);
+
+            // Column widths
+            let kind_width = entries
+                .iter()
+                .map(|s| s.kind.to_string().len())
+                .max()
+                .unwrap_or(8)
+                .max(4); // "Kind" header
+            let started_width = 12; // e.g. "Sat 11:42" or "2026-05-30" (max 12)
+
+            // Header
+            println!(
+                "{:width$}  {:kind_width$}  {:started_width$}  Timeline",
+                "UUID",
+                "Kind",
+                "Started",
+                width = uuid_width.max(4),
+                kind_width = kind_width,
+                started_width = started_width
+            );
+
+            // Separator
+            println!(
+                "{:-<width$}  {:-<kind_width$}  {:-<started_width$}  ---------",
+                "",
+                "",
+                "",
+                width = uuid_width.max(4),
+                kind_width = kind_width,
+                started_width = started_width
+            );
+
+            for (entry, abbrev) in entries.iter().zip(abbreviations.iter()) {
+                let started = format_started(entry.started_at);
+                let timeline = format_timeline(entry);
+                println!(
+                    "{:width$}  {:kind_width$}  {:started_width$}  {}",
+                    abbrev,
+                    entry.kind.to_string(),
+                    started,
+                    timeline,
+                    width = uuid_width.max(4),
+                    kind_width = kind_width,
+                    started_width = started_width
+                );
             }
         }
 
@@ -851,6 +932,114 @@ fn format_time(timestamp: i64) -> String {
         .single()
         .map(|dt| dt.format("%H:%M").to_string())
         .unwrap_or_else(|| timestamp.to_string())
+}
+
+/// Format a started_at timestamp for the list view.
+///
+/// Shows:
+/// - Today:          "HH:MM"       (e.g. "11:42")
+/// - 1-6 days ago:   "Day HH:MM"   (e.g. "Sat 11:42")
+/// - 7+ days ago:    "YYYY-MM-DD"  (e.g. "2026-05-23")
+fn format_started(timestamp: i64) -> String {
+    use chrono::{Local, TimeZone};
+
+    if timestamp == 0 {
+        return "N/A".to_string();
+    }
+
+    let dt = match Local.timestamp_opt(timestamp, 0).single() {
+        Some(dt) => dt,
+        None => return timestamp.to_string(),
+    };
+
+    let today = Local::now().date_naive();
+    let entry_date = dt.date_naive();
+    let days_diff = (today - entry_date).num_days();
+
+    if days_diff == 0 {
+        dt.format("%H:%M").to_string()
+    } else if days_diff <= 6 {
+        dt.format("%a %H:%M").to_string()
+    } else {
+        dt.format("%Y-%m-%d").to_string()
+    }
+}
+
+/// Build a human-readable timeline string for a schedulable.
+fn format_timeline(s: &Schedulable) -> String {
+    use chrono::Local;
+
+    let elapsed_secs = match s.status() {
+        rustomato::Status::Finished => s.finished_at - s.started_at,
+        rustomato::Status::Cancelled => s.cancelled_at - s.started_at,
+        rustomato::Status::Active | rustomato::Status::Stale => {
+            Local::now().timestamp() - s.started_at
+        }
+        rustomato::Status::New => 0,
+    };
+
+    let minutes = elapsed_secs / 60;
+    let seconds = elapsed_secs % 60;
+
+    let duration_str = if minutes >= 1 {
+        let noun = if minutes == 1 { "minute" } else { "minutes" };
+        format!("{} {}", minutes, noun)
+    } else {
+        let noun = if seconds == 1 { "second" } else { "seconds" };
+        format!("{} {}", seconds, noun)
+    };
+
+    let action = match s.status() {
+        rustomato::Status::Finished => "finished",
+        rustomato::Status::Cancelled => "cancelled",
+        rustomato::Status::Active => "running",
+        rustomato::Status::Stale => "stale",
+        rustomato::Status::New => "unknown",
+    };
+
+    if action == "running" {
+        if s.interruptions > 0 {
+            let noun = if s.interruptions == 1 {
+                "interruption"
+            } else {
+                "interruptions"
+            };
+            format!(
+                "running for {} and {} {}",
+                duration_str, s.interruptions, noun
+            )
+        } else {
+            format!("running for {}", duration_str)
+        }
+    } else if action == "stale" {
+        if s.interruptions > 0 {
+            let noun = if s.interruptions == 1 {
+                "interruption"
+            } else {
+                "interruptions"
+            };
+            format!(
+                "stale after {} and {} {}",
+                duration_str, s.interruptions, noun
+            )
+        } else {
+            format!("stale after {}", duration_str)
+        }
+    } else {
+        if s.interruptions > 0 {
+            let noun = if s.interruptions == 1 {
+                "interruption"
+            } else {
+                "interruptions"
+            };
+            format!(
+                "{} after {} and {} {}",
+                action, duration_str, s.interruptions, noun
+            )
+        } else {
+            format!("{} after {}", action, duration_str)
+        }
+    }
 }
 
 /// Read annotation text from positional args or stdin.
