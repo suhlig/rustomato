@@ -1522,4 +1522,32 @@ mod acceptance_tests {
             .success()
             .stdout(predicate::str::contains("completed"));
     }
+
+    // --- missing RUSTOMATO_ROOT directory -----------------------------------
+
+    #[test]
+    fn creates_root_directory_when_it_does_not_exist() {
+        let dir = tempdir().unwrap();
+        let missing_path = dir.path().join("nonexistent_subdir");
+        assert!(
+            !missing_path.exists(),
+            "sanity check: path should not exist"
+        );
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", &missing_path)
+            .arg("--no-hooks")
+            .arg("status")
+            .assert()
+            .success();
+
+        assert!(
+            missing_path.is_dir(),
+            "root directory should have been created"
+        );
+        assert!(
+            missing_path.join("data.db").is_file(),
+            "database should have been created"
+        );
+    }
 }

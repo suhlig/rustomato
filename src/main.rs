@@ -286,7 +286,13 @@ fn main() {
 
     // TODO Use Clap's `env` option
     let root = match env::var("RUSTOMATO_ROOT") {
-        Ok(val) => PathBuf::from(val),
+        Ok(val) => {
+            let root = PathBuf::from(val);
+            if !root.exists() {
+                std::fs::create_dir_all(root.as_path()).expect("creating the root directory");
+            }
+            root
+        }
         Err(_) => {
             let mut root = dirs::home_dir().expect("resolving the home directory");
             root.push(".rustomato/");
