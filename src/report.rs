@@ -33,6 +33,102 @@ struct AggregateStats {
     break_ratio: f64,
 }
 
+// ── Report builder ─────────────────────────────────────────────
+
+/// A simple text report accumulator that centralises formatting helpers.
+struct Report {
+    buf: String,
+}
+
+impl Report {
+    fn new() -> Self {
+        Self { buf: String::new() }
+    }
+
+    fn line(&mut self, text: impl std::fmt::Display) {
+        use std::fmt::Write;
+        let _ = writeln!(self.buf, "{}", text);
+    }
+
+    fn blank(&mut self) {
+        self.buf.push('\n');
+    }
+
+    fn separator(&mut self, width: usize) {
+        self.buf.push_str(&"\u{2500}".repeat(width));
+        self.buf.push('\n');
+    }
+
+    /// Indented line (2 spaces prefix).
+    fn indent(&mut self, text: impl std::fmt::Display) {
+        use std::fmt::Write;
+        let _ = writeln!(self.buf, "  {}", text);
+    }
+
+    fn into_string(self) -> String {
+        self.buf
+    }
+}
+
+/// Ratio indicator — returns a checkmark or warning emoji.
+fn ratio_indicator(ratio: f64) -> &'static str {
+    if (0.5..=2.0).contains(&ratio) {
+        "\u{2713}"
+    } else {
+        "\u{26a0}"
+    }
+}
+
+/// Write the standard summary metrics block (pomodori, breaks, ratio, focus block, active days).
+/// All metrics lines are indented by 2 spaces.
+fn write_metrics(
+    report: &mut Report,
+    agg: &AggregateStats,
+    prev_rate: Option<u32>,
+    active_days: Option<(u32, u32, u32)>,
+) {
+    let prev_str = prev_rate
+        .filter(|_| agg.completed > 0 || agg.cancelled > 0)
+        .map(|r| format!(" (prev: {}%)", r))
+        .unwrap_or_default();
+
+    report.indent(format_args!(
+        "Pomodori:     {} completed \u{00b7} {} cancelled  \u{00b7}  {}% completion rate{}",
+        agg.completed, agg.cancelled, agg.completion_rate, prev_str
+    ));
+    report.indent(format_args!(
+        "Breaks:       {} taken \u{00b7} {} cancelled",
+        agg.breaks_taken, agg.breaks_cancelled
+    ));
+
+    if agg.completed > 0 && agg.breaks_taken > 0 {
+        report.indent(format_args!(
+            "Ratio:        {:.1} break per pomodoro  {}",
+            agg.break_ratio,
+            ratio_indicator(agg.break_ratio)
+        ));
+    }
+
+    if agg.max_focus_block > 0 {
+        report.indent(format_args!(
+            "Focus block:  {} consecutive pomodori without interruption",
+            agg.max_focus_block
+        ));
+    }
+
+    if let Some((active_count, total_days, streak)) = active_days {
+        let day = if streak == 1 { "day" } else { "days" };
+        report.indent(format_args!(
+            "Active days:  {} of {} ({:.0}%)  \u{00b7}  Best streak: {} {}",
+            active_count,
+            total_days,
+            active_count as f64 / total_days as f64 * 100.0,
+            streak,
+            day
+        ));
+    }
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 fn parse_date_or_today(date: Option<String>) -> NaiveDate {
@@ -224,6 +320,49 @@ fn compute_day_stats(
     days
 }
 
+/// Print the standard interruption summary block.
+fn print_interruption_summary(
+    report: &mut Report,
+    agg: &AggregateStats,
+    prev_label: Option<&str>,
+    prev_agg: Option<&AggregateStats>,
+) {
+    report.line("Interruptions:");
+    report.indent(format_args!(
+        "Total:        {} ({:.1} avg per pomodoro)",
+        agg.total_interruptions, agg.avg_interruptions
+    ));
+    let total_logged = agg.internal_count + agg.external_count;
+    if total_logged > 0 {
+        let internal_pct = (agg.internal_count as f64 / total_logged as f64 * 100.0) as u32;
+        let external_pct = (agg.external_count as f64 / total_logged as f64 * 100.0) as u32;
+        report.indent(format_args!(
+            "Internal:     {} ({}%)",
+            agg.internal_count, internal_pct
+        ));
+        report.indent(format_args!(
+            "External:     {} ({}%)",
+            agg.external_count, external_pct
+        ));
+
+        if let (Some(label), Some(prev)) = (prev_label, prev_agg) {
+            let prev_total = prev.internal_count + prev.external_count;
+            if prev_total > 0 {
+                let prev_internal_pct =
+                    (prev.internal_count as f64 / prev_total as f64 * 100.0) as u32;
+                report.indent(format_args!(
+                    "({}: {} internal \u{00b7} {} external, {}% internal)",
+                    label, prev.internal_count, prev.external_count, prev_internal_pct
+                ));
+            }
+        }
+    } else if agg.total_interruptions > 0 {
+        report
+            .indent("(Kind breakdown not available for interruptions recorded before the upgrade)");
+    }
+    report.blank();
+}
+
 // ── Hints ────────────────────────────────────────────────────
 
 fn check_pattern_hints(
@@ -317,16 +456,16 @@ fn check_pattern_hints(
 /// date (defaults to today), with day-by-day breakdown, week-over-week comparison,
 /// best/worst day, and actionable hints.
 pub fn print_week_report(repo: &Repository, date: Option<String>) {
+    let mut rpt = Report::new();
+
     let date = parse_date_or_today(date);
     let weekday = date.weekday().num_days_from_monday(); // Mon=0 … Sun=6
     let monday = date - Duration::days(weekday as i64);
     let sunday = monday + Duration::days(6);
 
-    // Previous week range
     let prev_monday = monday - Duration::days(7);
     let prev_sunday = sunday - Duration::days(7);
 
-    // Fetch data for both weeks
     let (this_start, this_end) = (day_bounds(monday).0, day_bounds(sunday).1);
     let (prev_start, prev_end) = (day_bounds(prev_monday).0, day_bounds(prev_sunday).1);
 
@@ -347,44 +486,44 @@ pub fn print_week_report(repo: &Repository, date: Option<String>) {
         .filter(|d| d.pomodori_completed + d.pomodori_cancelled > 0)
         .min_by_key(|d| (d.pomodori_completed as i64) - (d.pomodori_cancelled as i64));
 
-    // ── Print header ──────────────────────────────────────
-    println!();
-    println!(
-        "Weekly Report: {} – {}",
+    // ── Header ────────────────────────────────────────────
+    rpt.blank();
+    rpt.line(format_args!(
+        "Weekly Report: {} \u{2013} {}",
         monday.format("%b %d"),
         sunday.format("%b %d, %Y")
-    );
+    ));
     if prev_week.completed > 0 || prev_week.cancelled > 0 || prev_week.breaks_taken > 0 {
-        println!(
-            "(vs week of {} – {})",
+        rpt.line(format_args!(
+            "(vs week of {} \u{2013} {})",
             prev_monday.format("%b %d"),
             prev_sunday.format("%b %d")
-        );
+        ));
     }
-    println!("{}", "─".repeat(52));
-    println!();
+    rpt.separator(52);
+    rpt.blank();
 
     // ── Day-by-day table ──────────────────────────────────
-    println!("Day-by-day breakdown:");
-    println!("  Day       Done   Canc  Brk ▼  Brk ✗   Interr.");
-    println!("  {}", "─".repeat(50));
+    rpt.line("Day-by-day breakdown:");
+    rpt.indent("Day       Done   Canc  Brk \u{25bc}  Brk \u{2717}   Interr.");
+    rpt.indent("\u{2500}".repeat(50));
     let has_any = day_stats
         .iter()
         .any(|d| d.pomodori_completed > 0 || d.pomodori_cancelled > 0 || d.breaks_taken > 0);
     if !has_any {
-        println!("  (nothing recorded this week)");
+        rpt.indent("(nothing recorded this week)");
     } else {
         for ds in &day_stats {
             let day_name = ds.date.format("%a");
             let star = if Some(ds.date) == best_day.map(|d| d.date) {
-                " ★"
+                " \u{2605}"
             } else if Some(ds.date) == worst_day.map(|d| d.date) {
-                " ⊗"
+                " \u{2297}"
             } else {
                 "  "
             };
-            println!(
-                "  {:6}{} {:>4}  {:>4}  {:>4}  {:>4}  {:>7}",
+            rpt.indent(format_args!(
+                "{:6}{} {:>4}  {:>4}  {:>4}  {:>4}  {:>7}",
                 day_name,
                 star,
                 ds.pomodori_completed,
@@ -392,116 +531,57 @@ pub fn print_week_report(repo: &Repository, date: Option<String>) {
                 ds.breaks_taken,
                 ds.breaks_cancelled,
                 ds.interruptions,
-            );
+            ));
         }
     }
-    println!();
+    rpt.blank();
 
     // ── Weekly summary ────────────────────────────────────
-    println!("Weekly summary:");
+    rpt.line("Weekly summary:");
     if week.completed == 0 && week.cancelled == 0 && week.breaks_taken == 0 {
-        println!("  No pomodori or breaks recorded this week.");
-        println!();
+        rpt.indent("No pomodori or breaks recorded this week.");
+        rpt.blank();
+        print!("{}", rpt.into_string());
         return;
     }
 
-    let prev_rate_str = if prev_week.completed > 0 || prev_week.cancelled > 0 {
-        format!(" (prev: {}%)", prev_week.completion_rate)
-    } else {
-        String::new()
-    };
-    println!(
-        "  Pomodori:     {} completed · {} cancelled  ·  {}% completion rate{}",
-        week.completed, week.cancelled, week.completion_rate, prev_rate_str
-    );
-    println!(
-        "  Breaks:       {} taken · {} cancelled",
-        week.breaks_taken, week.breaks_cancelled
-    );
-
-    if week.completed > 0 && week.breaks_taken > 0 {
-        let ratio_indicator = if (0.5..=2.0).contains(&week.break_ratio) {
-            "✓"
-        } else {
-            "⚠"
-        };
-        println!(
-            "  Ratio:        {:.1} break per pomodoro  {}",
-            week.break_ratio, ratio_indicator
-        );
-    }
-
-    if week.max_focus_block > 0 {
-        println!(
-            "  Focus block:  {} consecutive pomodori without interruption",
-            week.max_focus_block
-        );
-    }
-    println!();
+    write_metrics(&mut rpt, &week, Some(prev_week.completion_rate), None);
+    rpt.blank();
 
     // ── Interruptions ─────────────────────────────────────
-    println!("Interruptions:");
-    println!(
-        "  Total:        {} ({:.1} avg per pomodoro)",
-        week.total_interruptions, week.avg_interruptions
-    );
-    let total_logged = week.internal_count + week.external_count;
-    if total_logged > 0 {
-        let internal_pct = (week.internal_count as f64 / total_logged as f64 * 100.0) as u32;
-        let external_pct = (week.external_count as f64 / total_logged as f64 * 100.0) as u32;
-        println!(
-            "  Internal:     {} ({}%)",
-            week.internal_count, internal_pct
-        );
-        println!(
-            "  External:     {} ({}%)",
-            week.external_count, external_pct
-        );
-
-        let prev_total = prev_week.internal_count + prev_week.external_count;
-        if prev_total > 0 {
-            let prev_internal_pct =
-                (prev_week.internal_count as f64 / prev_total as f64 * 100.0) as u32;
-            println!(
-                "  (prev week: {} internal · {} external, {}% internal)",
-                prev_week.internal_count, prev_week.external_count, prev_internal_pct
-            );
-        }
-    } else if week.total_interruptions > 0 {
-        println!("  (Kind breakdown not available for interruptions recorded before the upgrade)");
-    }
-    println!();
+    print_interruption_summary(&mut rpt, &week, Some("prev week"), Some(&prev_week));
 
     // ── Best / worst day ──────────────────────────────────
     if let Some(best) = best_day {
-        println!(
-            "★  Best day: {} ({} completed)",
+        rpt.line(format_args!(
+            "\u{2605}  Best day: {} ({} completed)",
             best.date.format("%A"),
             best.pomodori_completed
-        );
+        ));
     }
-    if let Some(worst) = worst_day {
-        let has_any = worst.pomodori_completed > 0 || worst.pomodori_cancelled > 0;
-        if has_any {
-            println!(
-                "⊗  Worst day: {} ({} completed, {} cancelled)",
-                worst.date.format("%A"),
-                worst.pomodori_completed,
-                worst.pomodori_cancelled
-            );
-        }
+    if let Some(worst) = worst_day
+        && (worst.pomodori_completed > 0 || worst.pomodori_cancelled > 0)
+    {
+        rpt.line(format_args!(
+            "\u{2297}  Worst day: {} ({} completed, {} cancelled)",
+            worst.date.format("%A"),
+            worst.pomodori_completed,
+            worst.pomodori_cancelled
+        ));
     }
-    println!();
+    rpt.blank();
 
     // ── Hints ─────────────────────────────────────────────
     let hints = check_pattern_hints(&day_stats, &week, &prev_week);
     if !hints.is_empty() {
-        println!("Insights:");
+        rpt.line("Insights:");
         for hint in &hints {
-            println!("  {}", hint);
+            rpt.indent(hint);
         }
-        println!();
+        rpt.blank();
     }
+
+    print!("{}", rpt.into_string());
 }
 
 // ── Interruption patterns report ────────────────────────────
@@ -509,6 +589,8 @@ pub fn print_week_report(repo: &Repository, date: Option<String>) {
 /// Print an interruption pattern report covering the last N days from the given
 /// date, broken down by hour of day and day of week with internal/external split.
 pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days: u32) {
+    let mut rpt = Report::new();
+
     let date = parse_date_or_today(date);
     let start_date = date - Duration::days(days as i64 - 1);
     let (start, end) = (day_bounds(start_date).0, day_bounds(date).1);
@@ -526,10 +608,10 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
         )
     };
 
-    println!();
-    println!("Interruption Patterns: {}", period_label);
-    println!("{}", "─".repeat(52));
-    println!();
+    rpt.blank();
+    rpt.line(format_args!("Interruption Patterns: {}", period_label));
+    rpt.separator(52);
+    rpt.blank();
 
     if interrupts.is_empty() {
         let total_interruptions: i64 = entries
@@ -538,14 +620,12 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
             .map(|e| e.interruptions)
             .sum();
         if total_interruptions > 0 {
-            println!(
-                "  {} interruption(s) recorded via counter in this period, but the interrupt log\n  (which provides kind/hour/day breakdown) is empty. Interruptions recorded\n  before the upgrade are not included in this report.",
-                total_interruptions
-            );
+            rpt.indent(format_args!("{} interruption(s) recorded via counter in this period, but the interrupt log\n  (which provides kind/hour/day breakdown) is empty. Interruptions recorded\n  before the upgrade are not included in this report.", total_interruptions));
         } else {
-            println!("  No interruptions recorded in this period.");
+            rpt.indent("No interruptions recorded in this period.");
         }
-        println!();
+        rpt.blank();
+        print!("{}", rpt.into_string());
         return;
     }
 
@@ -581,9 +661,9 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
     let max_wd_total = by_weekday.values().map(|(t, _, _)| *t).max().unwrap_or(0);
 
     // ── Hourly breakdown ──────────────────────────────────
-    println!("By hour of day:");
-    println!("  Hour      Total  Internal  External");
-    println!("  {}", "─".repeat(40));
+    rpt.line("By hour of day:");
+    rpt.indent("Hour      Total  Internal  External");
+    rpt.indent(format_args!("{}", "─".repeat(40)));
     for hour in 0..24 {
         let (total, internal, external) = by_hour.get(&hour).copied().unwrap_or((0, 0, 0));
         if total > 0 {
@@ -592,19 +672,19 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
             } else {
                 "   "
             };
-            println!(
-                "  {:02}:00    {:>5}  {:>8}  {:>8}{}",
+            rpt.indent(format_args!(
+                "{:02}:00    {:>5}  {:>8}  {:>8}{}",
                 hour, total, internal, external, marker
-            );
+            ));
         }
     }
-    println!();
+    rpt.blank();
 
     // ── Day-of-week breakdown ─────────────────────────────
     let weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    println!("By day of week:");
-    println!("  Day       Total  Internal  External");
-    println!("  {}", "─".repeat(40));
+    rpt.line("By day of week:");
+    rpt.indent("Day       Total  Internal  External");
+    rpt.indent(format_args!("{}", "─".repeat(40)));
     for wd in 0..7 {
         let (total, internal, external) = by_weekday.get(&wd).copied().unwrap_or((0, 0, 0));
         if total > 0 {
@@ -613,13 +693,13 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
             } else {
                 "   "
             };
-            println!(
-                "  {:6}  {:>5}  {:>8}  {:>8}{}",
+            rpt.indent(format_args!(
+                "{:6}  {:>5}  {:>8}  {:>8}{}",
                 weekday_names[wd as usize], total, internal, external, marker
-            );
+            ));
         }
     }
-    println!();
+    rpt.blank();
 
     // ── Summary stats ─────────────────────────────────────
     let total_count: usize = interrupts.len();
@@ -631,11 +711,13 @@ pub fn print_interruptions_report(repo: &Repository, date: Option<String>, days:
     let internal_pct = (internal_count as f64 / total_count as f64 * 100.0) as u32;
     let external_pct = (external_count as f64 / total_count as f64 * 100.0) as u32;
 
-    println!(
+    rpt.line(format_args!(
         "Total: {} interruptions ({} internal · {} external, {}% / {}%)",
         total_count, internal_count, external_count, internal_pct, external_pct
-    );
-    println!();
+    ));
+    rpt.blank();
+
+    print!("{}", rpt.into_string());
 }
 
 // ── Monthly report ───────────────────────────────────────────
@@ -912,8 +994,9 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
     };
 
     // ── Print header ──────────────────────────────────────
-    println!();
-    println!("Monthly Report: {}", date.format("%B %Y"));
+    let mut rpt = Report::new();
+    rpt.blank();
+    rpt.line(format_args!("Monthly Report: {}", date.format("%B %Y")));
     if !prev_months.is_empty() {
         let labels: Vec<String> = prev_months
             .iter()
@@ -923,20 +1006,20 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
                 format!("{}", d.format("%b %Y"))
             })
             .collect();
-        println!("(vs {})", labels.join(" · "));
+        rpt.line(format_args!("(vs {})", labels.join(" · ")));
     }
-    println!("{}", "─".repeat(52));
-    println!();
+    rpt.separator(52);
+    rpt.blank();
 
     // ── Week-by-week table ────────────────────────────────
-    println!("Week-by-week breakdown:");
-    println!("  Week        Done   Canc  Brk ▼  Brk ✗   Interr.");
-    println!("  {}", "─".repeat(52));
+    rpt.line("Week-by-week breakdown:");
+    rpt.indent("Week        Done   Canc  Brk ▼  Brk ✗   Interr.");
+    rpt.indent("─".repeat(52));
     let has_any = week_stats
         .iter()
         .any(|(_, a)| a.completed > 0 || a.cancelled > 0 || a.breaks_taken > 0);
     if !has_any {
-        println!("  (nothing recorded this month)");
+        rpt.indent("(nothing recorded this month)");
     } else {
         let best_week = week_stats
             .iter()
@@ -963,7 +1046,7 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
                 week_start.format("%b %-d"),
                 (*week_start + Duration::days(6)).format("– %-d")
             );
-            println!(
+            rpt.line(format_args!(
                 "  {:>12}{} {:>4}  {:>4}  {:>4}  {:>4}  {:>7}",
                 label,
                 star,
@@ -972,115 +1055,42 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
                 agg.breaks_taken,
                 agg.breaks_cancelled,
                 agg.total_interruptions,
-            );
+            ));
         }
     }
-    println!();
+    rpt.blank();
 
     // ── Monthly summary ───────────────────────────────────
-    println!("Monthly summary:");
+    rpt.line("Monthly summary:");
     if target_agg.completed == 0 && target_agg.cancelled == 0 && target_agg.breaks_taken == 0 {
-        println!("  No pomodori or breaks recorded this month.");
-        println!();
+        rpt.indent("No pomodori or breaks recorded this month.");
+        rpt.blank();
+        print!("{}", rpt.into_string());
         return;
     }
 
-    let prev_rate_str = if let Some(((_, _), prev)) = prev_months.last() {
-        if prev.completed > 0 || prev.cancelled > 0 {
-            format!(" (prev: {}%", prev.completion_rate)
-        } else {
-            String::new()
-        }
-    } else {
-        String::new()
-    };
+    let prev_rate = prev_months
+        .last()
+        .map(|((_, _), prev)| prev.completion_rate);
+    write_metrics(
+        &mut rpt,
+        &target_agg,
+        prev_rate,
+        Some((active_count, total_days, streak)),
+    );
 
-    let avg_str = if multi_month_avg > 0 && months_to_show > 1 {
-        format!(
-            "{}  |  {}-month avg: {}%",
-            prev_rate_str,
+    if multi_month_avg > 0 && months_to_show > 1 {
+        rpt.indent(format_args!(
+            "{}-month avg completion rate: {}%",
             months_to_show.min(12),
             multi_month_avg
-        )
-    } else {
-        prev_rate_str
-    };
-
-    println!(
-        "  Pomodori:     {} completed · {} cancelled  ·  {}% completion rate{}",
-        target_agg.completed, target_agg.cancelled, target_agg.completion_rate, avg_str
-    );
-    println!(
-        "  Breaks:       {} taken · {} cancelled",
-        target_agg.breaks_taken, target_agg.breaks_cancelled
-    );
-
-    if target_agg.completed > 0 && target_agg.breaks_taken > 0 {
-        let ratio_indicator = if (0.5..=2.0).contains(&target_agg.break_ratio) {
-            "✓"
-        } else {
-            "⚠"
-        };
-        println!(
-            "  Ratio:        {:.1} break per pomodoro  {}",
-            target_agg.break_ratio, ratio_indicator
-        );
+        ));
     }
-
-    if target_agg.max_focus_block > 0 {
-        println!(
-            "  Focus block:  {} consecutive pomodori without interruption",
-            target_agg.max_focus_block
-        );
-    }
-
-    if active_count > 0 {
-        let day = if streak == 1 { "day" } else { "days" };
-        println!(
-            "  Active days:  {} of {} ({:.0}%)  ·  Best streak: {} {}",
-            active_count,
-            total_days,
-            active_count as f64 / total_days as f64 * 100.0,
-            streak,
-            day
-        );
-    }
-    println!();
+    rpt.blank();
 
     // ── Interruptions ─────────────────────────────────────
-    println!("Interruptions:");
-    println!(
-        "  Total:        {} ({:.1} avg per pomodoro)",
-        target_agg.total_interruptions, target_agg.avg_interruptions
-    );
-    let total_logged = target_agg.internal_count + target_agg.external_count;
-    if total_logged > 0 {
-        let internal_pct = (target_agg.internal_count as f64 / total_logged as f64 * 100.0) as u32;
-        let external_pct = (target_agg.external_count as f64 / total_logged as f64 * 100.0) as u32;
-        println!(
-            "  Internal:     {} ({}%)",
-            target_agg.internal_count, internal_pct
-        );
-        println!(
-            "  External:     {} ({}%)",
-            target_agg.external_count, external_pct
-        );
-
-        if let Some(((_, _), prev)) = prev_months.last() {
-            let prev_total = prev.internal_count + prev.external_count;
-            if prev_total > 0 {
-                let prev_internal_pct =
-                    (prev.internal_count as f64 / prev_total as f64 * 100.0) as u32;
-                println!(
-                    "  (prev month: {} internal · {} external, {}% internal)",
-                    prev.internal_count, prev.external_count, prev_internal_pct
-                );
-            }
-        }
-    } else if target_agg.total_interruptions > 0 {
-        println!("  (Kind breakdown not available for interruptions recorded before the upgrade)");
-    }
-    println!();
+    let prev_agg = prev_months.last().map(|((_, _), a)| a);
+    print_interruption_summary(&mut rpt, &target_agg, Some("prev month"), prev_agg);
 
     // ── Best / worst week ─────────────────────────────────
     let best_week = week_stats
@@ -1095,23 +1105,23 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
     if let Some((ws, agg)) = best_week
         && agg.completed > 0
     {
-        println!(
+        rpt.line(format_args!(
             "★  Best week: {} ({} completed)",
             ws.format("%b %-d"),
             agg.completed
-        );
+        ));
     }
     if let Some((ws, agg)) = worst_week
         && (agg.completed > 0 || agg.cancelled > 0)
     {
-        println!(
+        rpt.line(format_args!(
             "⊗  Worst week: {} ({} completed, {} cancelled)",
             ws.format("%b %-d"),
             agg.completed,
             agg.cancelled
-        );
+        ));
     }
-    println!();
+    rpt.blank();
 
     // ── Hints ─────────────────────────────────────────────
     let hints = check_monthly_hints(
@@ -1123,12 +1133,14 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
         &week_stats,
     );
     if !hints.is_empty() {
-        println!("Insights:");
+        rpt.line("Insights:");
         for hint in &hints {
-            println!("  {}", hint);
+            rpt.indent(hint);
         }
-        println!();
+        rpt.blank();
     }
+
+    print!("{}", rpt.into_string());
 }
 
 // ── Rolling window report ─────────────────────────────────────
@@ -1137,6 +1149,8 @@ pub fn print_month_report(repo: &Repository, date: Option<String>, months_to_sho
 /// the given date (defaults to today), with day-by-day breakdown, comparison to
 /// the previous window, and actionable hints.
 pub fn print_last_report(repo: &Repository, date: Option<String>, days: u32) {
+    let mut rpt = Report::new();
+
     let end_date = parse_date_or_today(date);
     let start_date = end_date - Duration::days(days as i64 - 1);
 
@@ -1165,129 +1179,69 @@ pub fn print_last_report(repo: &Repository, date: Option<String>, days: u32) {
     let (active_count, streak) = active_day_stats(&cur_entries, start_date, end_date);
 
     // ── Print header ──────────────────────────────────────
-    println!();
+    rpt.blank();
     if days == 1 {
-        println!("Last 1 day – {}", end_date.format("%b %d, %Y"));
+        rpt.line(format_args!(
+            "Last 1 day – {}",
+            end_date.format("%b %d, %Y")
+        ));
     } else {
-        println!(
+        rpt.line(format_args!(
             "Last {} days – {} – {}",
             days,
             start_date.format("%b %d"),
             end_date.format("%b %d, %Y")
-        );
+        ));
     }
     let has_prev = pr_agg.completed > 0 || pr_agg.cancelled > 0 || pr_agg.breaks_taken > 0;
     if has_prev {
-        println!(
+        rpt.line(format_args!(
             "(prev {} days: {} – {})",
             days,
             prev_window_start.format("%b %d"),
             prev_window_end.format("%b %d")
-        );
+        ));
     }
-    println!("{}", "─".repeat(52));
-    println!();
+    rpt.separator(52);
+    rpt.blank();
 
     let is_empty = cur_agg.completed == 0 && cur_agg.cancelled == 0 && cur_agg.breaks_taken == 0;
     if is_empty {
-        println!("  Nothing recorded in this period.");
-        println!();
+        rpt.indent("Nothing recorded in this period.");
+        rpt.blank();
+        print!("{}", rpt.into_string());
         return;
     }
 
     // ── Summary ───────────────────────────────────────────
-    println!("Summary:");
-    let prev_rate_str = if has_prev {
-        format!(" (prev: {}%)", pr_agg.completion_rate)
+    rpt.line("Summary:");
+    let prev_rate = if has_prev {
+        Some(pr_agg.completion_rate)
     } else {
-        String::new()
+        None
     };
-    println!(
-        "  Pomodori:     {} completed · {} cancelled  ·  {}% completion rate{}",
-        cur_agg.completed, cur_agg.cancelled, cur_agg.completion_rate, prev_rate_str
-    );
-    println!(
-        "  Breaks:       {} taken · {} cancelled",
-        cur_agg.breaks_taken, cur_agg.breaks_cancelled
-    );
-
-    if cur_agg.completed > 0 && cur_agg.breaks_taken > 0 {
-        let ratio_indicator = if (0.5..=2.0).contains(&cur_agg.break_ratio) {
-            "✓"
-        } else {
-            "⚠"
-        };
-        println!(
-            "  Ratio:        {:.1} break per pomodoro  {}",
-            cur_agg.break_ratio, ratio_indicator
-        );
-    }
-
-    if cur_agg.max_focus_block > 0 {
-        println!(
-            "  Focus block:  {} consecutive pomodori without interruption",
-            cur_agg.max_focus_block
-        );
-    }
-
-    if active_count > 0 && total_days > 1 {
-        let day_label = if streak == 1 { "day" } else { "days" };
-        println!(
-            "  Active days:  {} of {} ({:.0}%)  ·  Best streak: {} {}",
-            active_count,
-            total_days,
-            active_count as f64 / total_days as f64 * 100.0,
-            streak,
-            day_label
-        );
-    }
-    println!();
+    let active_days_opt = if active_count > 0 && total_days > 1 {
+        Some((active_count, total_days, streak))
+    } else {
+        None
+    };
+    write_metrics(&mut rpt, &cur_agg, prev_rate, active_days_opt);
+    rpt.blank();
 
     // ── Interruptions ─────────────────────────────────────
-    println!("Interruptions:");
-    println!(
-        "  Total:        {} ({:.1} avg per pomodoro)",
-        cur_agg.total_interruptions, cur_agg.avg_interruptions
-    );
-    let total_logged = cur_agg.internal_count + cur_agg.external_count;
-    if total_logged > 0 {
-        let internal_pct = (cur_agg.internal_count as f64 / total_logged as f64 * 100.0) as u32;
-        let external_pct = (cur_agg.external_count as f64 / total_logged as f64 * 100.0) as u32;
-        println!(
-            "  Internal:     {} ({}%)",
-            cur_agg.internal_count, internal_pct
-        );
-        println!(
-            "  External:     {} ({}%)",
-            cur_agg.external_count, external_pct
-        );
-
-        if has_prev {
-            let pr_total = pr_agg.internal_count + pr_agg.external_count;
-            if pr_total > 0 {
-                let pr_internal_pct =
-                    (pr_agg.internal_count as f64 / pr_total as f64 * 100.0) as u32;
-                println!(
-                    "  (prev: {} internal · {} external, {}% internal)",
-                    pr_agg.internal_count, pr_agg.external_count, pr_internal_pct
-                );
-            }
-        }
-    } else if cur_agg.total_interruptions > 0 {
-        println!("  (Kind breakdown not available for interruptions recorded before the upgrade)");
-    }
-    println!();
+    let prev_agg = if has_prev { Some(&pr_agg) } else { None };
+    print_interruption_summary(&mut rpt, &cur_agg, Some("prev"), prev_agg);
 
     // ── Day-by-day table ──────────────────────────────────
     if total_days > 1 {
-        println!("Day-by-day:");
-        println!("  Day       Done   Canc  Brk ▼  Brk ✗   Interr.");
-        println!("  {}", "─".repeat(50));
+        rpt.line("Day-by-day:");
+        rpt.line("  Day       Done   Canc  Brk ▼  Brk ✗   Interr.");
+        rpt.separator(50);
         let has_any = day_stats
             .iter()
             .any(|d| d.pomodori_completed > 0 || d.pomodori_cancelled > 0 || d.breaks_taken > 0);
         if !has_any {
-            println!("  (nothing recorded)");
+            rpt.indent("(nothing recorded)");
         } else {
             let best_day = day_stats
                 .iter()
@@ -1310,7 +1264,7 @@ pub fn print_last_report(repo: &Repository, date: Option<String>, days: u32) {
                 } else {
                     "  "
                 };
-                println!(
+                rpt.line(format_args!(
                     "  {:6}{} {:>4}  {:>4}  {:>4}  {:>4}  {:>7}",
                     ds.date.format("%b %-d"),
                     star,
@@ -1319,19 +1273,151 @@ pub fn print_last_report(repo: &Repository, date: Option<String>, days: u32) {
                     ds.breaks_taken,
                     ds.breaks_cancelled,
                     ds.interruptions,
-                );
+                ));
             }
         }
-        println!();
+        rpt.blank();
     }
 
     // ── Hints ─────────────────────────────────────────────
     let hints = check_pattern_hints(&day_stats, &cur_agg, &pr_agg);
     if !hints.is_empty() {
-        println!("Insights:");
+        rpt.line("Insights:");
         for hint in &hints {
-            println!("  {}", hint);
+            rpt.indent(hint);
         }
-        println!();
+        rpt.blank();
     }
+
+    print!("{}", rpt.into_string());
+}
+
+/// Print a single-day report.
+pub fn print_day_report(repo: &Repository, date: Option<String>) {
+    use crate::{Annotation, Status, format_time};
+    use std::collections::HashMap;
+
+    let mut rpt = Report::new();
+
+    let date = parse_date_or_today(date);
+    let (start_of_day, end_of_day) = day_bounds(date);
+
+    let entries = repo
+        .entries_between(start_of_day, end_of_day)
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        });
+
+    let interrupt_logs = repo
+        .interrupts_between(start_of_day, end_of_day)
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        });
+
+    let annotations = repo
+        .annotations_between(start_of_day, end_of_day)
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        });
+
+    // ── Group annotations by schedulable UUID ───────────────
+    let mut ann_by_uuid: HashMap<String, Vec<&Annotation>> = HashMap::new();
+    for a in &annotations {
+        ann_by_uuid
+            .entry(a.schedulable_uuid.to_string())
+            .or_default()
+            .push(a);
+    }
+
+    // ── Header ──────────────────────────────────────────────
+    let day_name = date.format("%A");
+    rpt.line(format_args!("Report for {} ({})", date, day_name));
+    rpt.separator(35);
+    rpt.blank();
+
+    if entries.is_empty() {
+        rpt.line("Nothing recorded for this day.");
+        print!("{}", rpt.into_string());
+        return;
+    }
+
+    // ── Entry list with annotations ─────────────────────────
+    for entry in &entries {
+        let start = format_time(entry.started_at);
+        let end = if entry.finished_at != 0 {
+            format_time(entry.finished_at)
+        } else if entry.cancelled_at != 0 {
+            format_time(entry.cancelled_at)
+        } else {
+            "...".to_string()
+        };
+
+        let status_icon = match entry.status() {
+            Status::Finished => "\u{2713}",
+            Status::Cancelled => "\u{2717}",
+            Status::Active => "\u{2026}",
+            Status::Stale => "?",
+            Status::New => "?",
+        };
+
+        let interrupt_info = if entry.interruptions > 0 {
+            format!(" ({} int.)", entry.interruptions)
+        } else {
+            String::new()
+        };
+
+        rpt.line(format_args!(
+            " {:>5} - {:<5}  {:<9} ({:>2} min)  {}{}",
+            start,
+            end,
+            format!("{}", entry.kind),
+            entry.duration,
+            status_icon,
+            interrupt_info,
+        ));
+
+        // Annotations for this entry
+        if let Some(notes) = ann_by_uuid.get(&entry.uuid.to_string()) {
+            for note in notes {
+                rpt.line(format_args!("    \u{2192} {}", note.body));
+            }
+        }
+    }
+    rpt.blank();
+
+    // ── Metrics ─────────────────────────────────────────────
+    let agg = compute_aggregate(&entries, &interrupt_logs);
+
+    rpt.line(format_args!(
+        "Pomodori    {} completed  \u{00b7}  {} cancelled  \u{00b7}  {}% completion rate",
+        agg.completed, agg.cancelled, agg.completion_rate
+    ));
+    rpt.line(format_args!(
+        "Breaks      {} taken      \u{00b7}  {} cancelled",
+        agg.breaks_taken, agg.breaks_cancelled
+    ));
+    if agg.completed > 0 && agg.breaks_taken > 0 {
+        rpt.line(format_args!(
+            "Ratio       {:.1} break per pomodoro  {}",
+            agg.break_ratio,
+            ratio_indicator(agg.break_ratio)
+        ));
+    }
+    rpt.blank();
+
+    if agg.max_focus_block > 1 {
+        rpt.line(format_args!(
+            "Longest focus block:  {} consecutive pomodori without interruption",
+            agg.max_focus_block
+        ));
+        rpt.blank();
+    }
+
+    // ── Interruptions ─────────────────────────────────────
+    print_interruption_summary(&mut rpt, &agg, None, None);
+
+    print!("{}", rpt.into_string());
 }

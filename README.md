@@ -247,8 +247,6 @@ cargo release patch
 
 # TODO
 
-* What would make refactoring easier? Shall we extract some of the more complex code paths into functions? Suggest some high-value refactoring opportunities witht the goal of making future changes easier.
-* relative timestamps in `pomodoro list`
 * `rustomato pomodoro annotate --target <GUID>` adds an annotation to the pomodoro with the given GUID.
   - When the symbolic `--target -1` is specified, the annotation is added to the most recent pomodoro (i.e. the one that was most recently completed). Extend that pattern to `-2` until `-9` for the most recent pomodori, even if they were earlier than today.
   - When the argument to `--target` can be interpreted as a timestamp that falls into one of the most recent pomodori, the annotation is added to that pomodoro.

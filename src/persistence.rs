@@ -34,6 +34,54 @@ impl fmt::Display for PersistenceError {
     }
 }
 
+// ── Row mappers ──────────────────────────────────────────────────
+
+/// Map a `schedulables` row to a `Schedulable`. Panics on data-integrity
+/// errors (invalid UUID or kind in the database).
+fn row_to_schedulable(row: &rusqlite::Row<'_>) -> rusqlite::Result<Schedulable> {
+    let uuid_str: String = row.get(0)?;
+    let kind_str: String = row.get(1)?;
+    Ok(Schedulable {
+        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_else(|e| {
+            panic!("invalid UUID in database: {}", e);
+        })),
+        kind: Kind::from(kind_str).unwrap_or_else(|e| {
+            panic!("invalid kind in database: {}", e.offender);
+        }),
+        pid: row.get(2).unwrap_or(0),
+        duration: row.get(3).unwrap_or(0),
+        started_at: row.get(4).unwrap_or(0),
+        finished_at: row.get(5).unwrap_or(0),
+        cancelled_at: row.get(6).unwrap_or(0),
+        interruptions: row.get(7).unwrap_or(0),
+    })
+}
+
+/// Map an `annotations` row to an `Annotation`.
+fn row_to_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Annotation> {
+    let uuid_str: String = row.get(0)?;
+    let sched_uuid_str: String = row.get(1)?;
+    Ok(Annotation {
+        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+        body: row.get(2)?,
+        created_at: row.get(3)?,
+    })
+}
+
+/// Map an `interrupt_log` row to an `InterruptLog`.
+fn row_to_interrupt_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<InterruptLog> {
+    let uuid_str: String = row.get(0)?;
+    let sched_uuid_str: String = row.get(1)?;
+    let kind_str: String = row.get(2)?;
+    Ok(InterruptLog {
+        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
+        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+        kind: InterruptionKind::from(&kind_str).expect("invalid interrupt kind in DB"),
+        created_at: row.get(3)?,
+    })
+}
+
 impl Repository {
     pub fn new(location: &str) -> Self {
         let db = Connection::open_with_flags(
@@ -81,17 +129,12 @@ impl Repository {
         match self.db.query_row(
             "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions from schedulables where uuid=?1",
             params![uuid_s],
-            |row| Ok(Schedulable {
-            uuid,
-            kind: Kind::from(row.get(1).expect("unable to fetch kind")).expect("unable to convert kind"),
-            pid: row.get(2).unwrap_or(0),
-            duration: row.get(3).expect("unable to convert duration"),
-            started_at: row.get(4).expect("unable to convert started_at"),
-            finished_at: row.get(5).unwrap_or(0),
-            cancelled_at: row.get(6).unwrap_or(0),
-            interruptions: row.get(7).unwrap_or(0),
-        })) {
-            Ok(val) => Ok(val),
+            row_to_schedulable,
+        ) {
+            Ok(mut s) => {
+                s.uuid = uuid;
+                Ok(s)
+            }
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
         }
     }
@@ -123,23 +166,7 @@ impl Repository {
              ORDER BY COALESCE(finished_at, cancelled_at) DESC \
              LIMIT 1",
             [],
-            |row| {
-                let uuid_str: String = row.get(0)?;
-                let kind_str: String = row.get(1)?;
-                Ok(Schedulable {
-                    uuid: SqlUuid(
-                        Uuid::parse_str(&uuid_str).expect("parsing UUID from database"),
-                    ),
-                    kind: Kind::from(kind_str)
-                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
-                    pid: row.get(2).unwrap_or(0),
-                    duration: row.get(3).unwrap_or(0),
-                    started_at: row.get(4).unwrap_or(0),
-                    finished_at: row.get(5).unwrap_or(0),
-                    cancelled_at: row.get(6).unwrap_or(0),
-                    interruptions: row.get(7).unwrap_or(0),
-                })
-            },
+            row_to_schedulable,
         ) {
             Ok(val) => Ok(Some(val)),
             Err(QueryReturnedNoRows) => Ok(None),
@@ -171,16 +198,7 @@ impl Repository {
         match self.db.query_row(
             "SELECT uuid, schedulable_uuid, body, created_at FROM annotations WHERE uuid=?1",
             params![uuid_s],
-            |row| {
-                let uuid_str: String = row.get(0)?;
-                let sched_uuid_str: String = row.get(1)?;
-                Ok(Annotation {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
-                    body: row.get(2).expect("unable to fetch body"),
-                    created_at: row.get(3).expect("unable to fetch created_at"),
-                })
-            },
+            row_to_annotation,
         ) {
             Ok(val) => Ok(val),
             Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
@@ -201,16 +219,7 @@ impl Repository {
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let rows = stmt
-            .query_map(params![uuid_s], |row| {
-                let uuid_str: String = row.get(0)?;
-                let sched_uuid_str: String = row.get(1)?;
-                Ok(Annotation {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
-                    body: row.get(2).expect("unable to fetch body"),
-                    created_at: row.get(3).expect("unable to fetch created_at"),
-                })
-            })
+            .query_map(params![uuid_s], row_to_annotation)
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let mut result = Vec::new();
@@ -229,23 +238,7 @@ impl Repository {
              ORDER BY finished_at DESC \
              LIMIT 1",
             [],
-            |row| {
-                let uuid_str: String = row.get(0)?;
-                let kind_str: String = row.get(1)?;
-                Ok(Schedulable {
-                    uuid: SqlUuid(
-                        Uuid::parse_str(&uuid_str).expect("parsing UUID from database"),
-                    ),
-                    kind: Kind::from(kind_str)
-                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
-                    pid: row.get(2).unwrap_or(0),
-                    duration: row.get(3).unwrap_or(0),
-                    started_at: row.get(4).unwrap_or(0),
-                    finished_at: row.get(5).unwrap_or(0),
-                    cancelled_at: row.get(6).unwrap_or(0),
-                    interruptions: row.get(7).unwrap_or(0),
-                })
-            },
+            row_to_schedulable,
         ) {
             Ok(val) => Ok(Some(val)),
             Err(QueryReturnedNoRows) => Ok(None),
@@ -289,17 +282,7 @@ impl Repository {
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let rows = stmt
-            .query_map(params![start, end], |row| {
-                let uuid_str: String = row.get(0)?;
-                let sched_uuid_str: String = row.get(1)?;
-                let kind_str: String = row.get(2)?;
-                Ok(InterruptLog {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
-                    kind: InterruptionKind::from(&kind_str).expect("invalid interrupt kind in DB"),
-                    created_at: row.get(3).expect("unable to fetch created_at"),
-                })
-            })
+            .query_map(params![start, end], row_to_interrupt_log)
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let mut result = Vec::new();
@@ -326,16 +309,7 @@ impl Repository {
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let rows = stmt
-            .query_map(params![start, end], |row| {
-                let uuid_str: String = row.get(0)?;
-                let sched_uuid_str: String = row.get(1)?;
-                Ok(Annotation {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
-                    body: row.get(2).expect("unable to fetch body"),
-                    created_at: row.get(3).expect("unable to fetch created_at"),
-                })
-            })
+            .query_map(params![start, end], row_to_annotation)
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let mut result = Vec::new();
@@ -358,21 +332,7 @@ impl Repository {
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let rows = stmt
-            .query_map(params![limit], |row| {
-                let uuid_str: String = row.get(0)?;
-                let kind_str: String = row.get(1)?;
-                Ok(Schedulable {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    kind: Kind::from(kind_str)
-                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
-                    pid: row.get(2).unwrap_or(0),
-                    duration: row.get(3).unwrap_or(0),
-                    started_at: row.get(4).unwrap_or(0),
-                    finished_at: row.get(5).unwrap_or(0),
-                    cancelled_at: row.get(6).unwrap_or(0),
-                    interruptions: row.get(7).unwrap_or(0),
-                })
-            })
+            .query_map(params![limit], row_to_schedulable)
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let mut result = Vec::new();
@@ -398,21 +358,7 @@ impl Repository {
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let rows = stmt
-            .query_map(params![start, end], |row| {
-                let uuid_str: String = row.get(0)?;
-                let kind_str: String = row.get(1)?;
-                Ok(Schedulable {
-                    uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-                    kind: Kind::from(kind_str)
-                        .unwrap_or_else(|e| panic!("invalid kind in DB: {}", e.offender)),
-                    pid: row.get(2).unwrap_or(0),
-                    duration: row.get(3).unwrap_or(0),
-                    started_at: row.get(4).unwrap_or(0),
-                    finished_at: row.get(5).unwrap_or(0),
-                    cancelled_at: row.get(6).unwrap_or(0),
-                    interruptions: row.get(7).unwrap_or(0),
-                })
-            })
+            .query_map(params![start, end], row_to_schedulable)
             .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
 
         let mut result = Vec::new();

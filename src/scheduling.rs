@@ -46,8 +46,12 @@ impl fmt::Display for SchedulingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SchedulingError::ExecutionError => write!(f, "cannot execute schedulable"),
-            SchedulingError::AlreadyRunning(_) => {
-                write!(f, "another Pomodoro or break is already running")
+            SchedulingError::AlreadyRunning(pid) => {
+                write!(
+                    f,
+                    "another pomodoro or break is already running (pid {}). Wait for it to end, cancel it, or use --force",
+                    pid
+                )
             }
             SchedulingError::HookRejected => {
                 write!(f, "a before-hook rejected the operation")
@@ -81,48 +85,43 @@ impl Scheduler {
         }
     }
 
-    fn run_hook(&self, event: HookEvent, schedulable: &Schedulable) -> Result<(), SchedulingError> {
-        let ctx = HookContext::from_schedulable(&self.root, schedulable, self.verbose);
-        hooks::run_hook(event, &ctx, self.no_hooks).map_err(|e| {
-            eprintln!("Error: Hook {} failed: {}", event, e);
-            SchedulingError::HookRejected
-        })
-    }
-
-    fn run_hook_after(&self, event: HookEvent, schedulable: &Schedulable) {
-        if let Err(e) = self.run_hook(event, schedulable)
-            && self.verbose
-        {
-            eprintln!("Warning: after-hook {} reported: {}", event, e);
-        }
-    }
-
-    /// Run a hook with the interrupt kind set on the context.
-    fn run_hook_with_interrupt_kind(
+    /// Run a hook, optionally modifying the `HookContext` before execution.
+    fn run_hook_with(
         &self,
         event: HookEvent,
         schedulable: &Schedulable,
-        kind: &InterruptionKind,
+        modify: impl FnOnce(&mut HookContext),
     ) -> Result<(), SchedulingError> {
         let mut ctx = HookContext::from_schedulable(&self.root, schedulable, self.verbose);
-        ctx.interrupt_kind = Some(kind.as_str().to_string());
+        modify(&mut ctx);
         hooks::run_hook(event, &ctx, self.no_hooks).map_err(|e| {
             eprintln!("Error: Hook {} failed: {}", event, e);
             SchedulingError::HookRejected
         })
     }
 
-    fn run_hook_after_with_interrupt_kind(
+    /// Convenience wrapper to run a hook without extra context.
+    fn run_hook(&self, event: HookEvent, schedulable: &Schedulable) -> Result<(), SchedulingError> {
+        self.run_hook_with(event, schedulable, |_| {})
+    }
+
+    /// Run an after-hook, optionally modifying the `HookContext`. Failures are only logged.
+    fn run_hook_after_with(
         &self,
         event: HookEvent,
         schedulable: &Schedulable,
-        kind: &InterruptionKind,
+        modify: impl FnOnce(&mut HookContext),
     ) {
-        if let Err(e) = self.run_hook_with_interrupt_kind(event, schedulable, kind)
+        if let Err(e) = self.run_hook_with(event, schedulable, modify)
             && self.verbose
         {
             eprintln!("Warning: after-hook {} reported: {}", event, e);
         }
+    }
+
+    /// Convenience wrapper to run an after-hook without extra context.
+    fn run_hook_after(&self, event: HookEvent, schedulable: &Schedulable) {
+        self.run_hook_after_with(event, schedulable, |_| {});
     }
 
     /// Log an externally completed pomodoro.
@@ -171,7 +170,9 @@ impl Scheduler {
         };
 
         // Run before-interrupt hook
-        self.run_hook_with_interrupt_kind(HookEvent::BeforeInterruptPomodoro, &target, &kind)?;
+        self.run_hook_with(HookEvent::BeforeInterruptPomodoro, &target, |ctx| {
+            ctx.interrupt_kind = Some(kind.as_str().to_string());
+        })?;
 
         // Increment the counter
         let updated = self
@@ -191,9 +192,35 @@ impl Scheduler {
             .map_err(|_| SchedulingError::ExecutionError)?;
 
         // Run after-interrupt hook
-        self.run_hook_after_with_interrupt_kind(HookEvent::AfterInterruptPomodoro, &updated, &kind);
+        self.run_hook_after_with(HookEvent::AfterInterruptPomodoro, &updated, |ctx| {
+            ctx.interrupt_kind = Some(kind.as_str().to_string());
+        });
 
         Ok(updated)
+    }
+
+    /// Close out a schedulable — cancel pomodoro, finish break.
+    /// Runs before/after hooks and persists.
+    fn close_out(&self, schedulable: &mut Schedulable) -> Result<(), SchedulingError> {
+        match schedulable.kind {
+            Kind::Pomodoro => {
+                self.run_hook(HookEvent::BeforeCancelPomodoro, schedulable)?;
+                schedulable.cancelled_at = now();
+                self.repo
+                    .save(schedulable)
+                    .expect("Unable to persist cancelled pomodoro");
+                self.run_hook_after(HookEvent::AfterCancelPomodoro, schedulable);
+            }
+            Kind::Break => {
+                self.run_hook(HookEvent::BeforeFinishBreak, schedulable)?;
+                schedulable.finished_at = now();
+                self.repo
+                    .save(schedulable)
+                    .expect("Unable to persist finished break");
+                self.run_hook_after(HookEvent::AfterFinishBreak, schedulable);
+            }
+        }
+        Ok(())
     }
 
     /// Cancel the currently active schedulable.
@@ -205,30 +232,9 @@ impl Scheduler {
             .active()
             .map_err(|_| SchedulingError::ExecutionError)?;
 
-        let schedulable = active.ok_or(SchedulingError::NothingToCancel)?;
-
-        match schedulable.kind {
-            Kind::Pomodoro => {
-                self.run_hook(HookEvent::BeforeCancelPomodoro, &schedulable)?;
-                let mut cancelled = schedulable;
-                cancelled.cancelled_at = now();
-                self.repo
-                    .save(&cancelled)
-                    .expect("Unable to persist cancelled pomodoro");
-                self.run_hook_after(HookEvent::AfterCancelPomodoro, &cancelled);
-                Ok(cancelled)
-            }
-            Kind::Break => {
-                self.run_hook(HookEvent::BeforeFinishBreak, &schedulable)?;
-                let mut finished = schedulable;
-                finished.finished_at = now();
-                self.repo
-                    .save(&finished)
-                    .expect("Unable to persist finished break");
-                self.run_hook_after(HookEvent::AfterFinishBreak, &finished);
-                Ok(finished)
-            }
-        }
+        let mut schedulable = active.ok_or(SchedulingError::NothingToCancel)?;
+        self.close_out(&mut schedulable)?;
+        Ok(schedulable)
     }
 
     /// Access the underlying repository (used in tests).
@@ -254,18 +260,13 @@ impl Scheduler {
             }
         };
 
-        // Build hook context with annotation text
-        let mut ctx = HookContext::from_schedulable(&self.root, &target, self.verbose);
-        ctx.annotation = Some(text.to_string());
-
         let before_event = match target.kind {
             Kind::Pomodoro => HookEvent::BeforeAnnotatePomodoro,
             Kind::Break => HookEvent::BeforeAnnotateBreak,
         };
 
-        hooks::run_hook(before_event, &ctx, self.no_hooks).map_err(|e| {
-            eprintln!("Error: Hook {} failed: {}", before_event, e);
-            SchedulingError::HookRejected
+        self.run_hook_with(before_event, &target, |ctx| {
+            ctx.annotation = Some(text.to_string());
         })?;
 
         // Save the annotation
@@ -285,12 +286,9 @@ impl Scheduler {
             Kind::Pomodoro => HookEvent::AfterAnnotatePomodoro,
             Kind::Break => HookEvent::AfterAnnotateBreak,
         };
-        ctx.annotation = Some(text.to_string());
-        if let Err(e) = hooks::run_hook(after_event, &ctx, self.no_hooks)
-            && self.verbose
-        {
-            eprintln!("Warning: after-hook {} reported: {}", after_event, e);
-        }
+        self.run_hook_after_with(after_event, &target, |ctx| {
+            ctx.annotation = Some(text.to_string());
+        });
 
         Ok(saved)
     }
@@ -302,34 +300,14 @@ impl Scheduler {
     ) -> Result<Schedulable, SchedulingError> {
         schedulable.started_at = now();
 
-        // --- force: kill any existing active schedulable, then cancel/finish it ---
-        if force && let Ok(Some(active)) = self.repo.active() {
+        // --- force: kill any existing active schedulable, then close it out ---
+        if force && let Ok(Some(mut active)) = self.repo.active() {
             // Kill the process if it's still alive
             if super::pid_is_alive(active.pid) {
                 eprintln!("Killing active pid {} ...", active.pid);
                 super::kill_process(active.pid);
             }
-
-            match active.kind {
-                Kind::Pomodoro => {
-                    self.run_hook(HookEvent::BeforeCancelPomodoro, &active)?;
-                    let mut cancelled = active;
-                    cancelled.cancelled_at = now();
-                    self.repo
-                        .save(&cancelled)
-                        .expect("Unable to persist force-cancelled pomodoro");
-                    self.run_hook_after(HookEvent::AfterCancelPomodoro, &cancelled);
-                }
-                Kind::Break => {
-                    self.run_hook(HookEvent::BeforeFinishBreak, &active)?;
-                    let mut finished = active;
-                    finished.finished_at = now();
-                    self.repo
-                        .save(&finished)
-                        .expect("Unable to persist force-finished break");
-                    self.run_hook_after(HookEvent::AfterFinishBreak, &finished);
-                }
-            }
+            self.close_out(&mut active)?;
         }
 
         // --- before-start-{kind} ---

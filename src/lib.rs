@@ -339,6 +339,19 @@ pub fn abbreviate_uuids(uuids: &[SqlUuid]) -> Vec<String> {
     strings
 }
 
+/// Format a timestamp as `HH:MM` (short form, for use in day reports).
+pub fn format_time(timestamp: i64) -> String {
+    use chrono::{Local, TimeZone};
+    if timestamp == 0 {
+        return "N/A".to_string();
+    }
+    Local
+        .timestamp_opt(timestamp, 0)
+        .single()
+        .map(|dt| dt.format("%H:%M").to_string())
+        .unwrap_or_else(|| timestamp.to_string())
+}
+
 pub fn format_timestamp(timestamp: i64) -> String {
     use chrono::{Local, TimeZone};
 

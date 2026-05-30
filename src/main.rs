@@ -3,7 +3,7 @@ use clap_complete::{Shell, generate};
 use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
-use rustomato::{Annotation, InterruptionKind, Kind, Schedulable, Status, abbreviate_uuids};
+use rustomato::{InterruptionKind, Kind, Schedulable, Status, abbreviate_uuids};
 use std::io;
 use std::path::*;
 use std::{env, process};
@@ -330,564 +330,25 @@ fn main() {
     match opts.subcmd {
         SubCommands::Init(_) => unreachable!(), // handled above
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
-            PomodoroCommands::Start(start_pomodoro_options) => {
-                let pom =
-                    Schedulable::new(pid, Kind::Pomodoro, start_pomodoro_options.duration.into());
-
-                if verbose {
-                    println!("Starting {}", pom);
-                }
-
-                match scheduler.run(pom, start_pomodoro_options.force) {
-                    Ok(completed_pom) => {
-                        if verbose {
-                            println!("\n{}", completed_pom);
-                        }
-
-                        match completed_pom.status() {
-                            Status::Cancelled => {
-                                process::exit(1);
-                            }
-                            Status::Finished => {
-                                process::exit(0);
-                            }
-                            _ => (), // TODO Should not happen; panic?
-                        }
-                    }
-                    Err(err) => {
-                        match err {
-                            SchedulingError::AlreadyRunning(pid) => eprintln!(
-                                "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
-                                err, pid
-                            ),
-                            SchedulingError::HookRejected => {
-                                // Error message already printed by the scheduler
-                                process::exit(1);
-                            }
-                            _ => eprintln!("Error: {}.", err),
-                        }
-                        process::exit(1);
-                    }
-                }
+            PomodoroCommands::Start(ref opts) => cmd_pomodoro_start(&scheduler, opts, pid, verbose),
+            PomodoroCommands::Interrupt(ref opts) => {
+                cmd_pomodoro_interrupt(&scheduler, opts, verbose)
             }
-            PomodoroCommands::Interrupt(interrupt_options) => {
-                let kind = match InterruptionKind::from(&interrupt_options.kind) {
-                    Ok(k) => k,
-                    Err(e) => {
-                        eprintln!("Error: {}.", e);
-                        process::exit(1);
-                    }
-                };
-
-                match scheduler.interrupt(kind) {
-                    Ok(interrupted) => {
-                        if verbose {
-                            println!("{}", interrupted);
-                        }
-                        process::exit(0);
-                    }
-                    Err(err) => {
-                        eprintln!("Error: {}.", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            PomodoroCommands::Log(log_options) => {
-                let (started_at, finished_at) = match (
-                    &log_options.started_at,
-                    &log_options.finished_at,
-                    log_options.duration,
-                ) {
-                    (Some(s), None, dur) => {
-                        let dur = dur.unwrap_or(25) as i64;
-                        let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
-                            eprintln!("Error: {} --started-at: {}", e, s);
-                            process::exit(1);
-                        });
-                        let finished_at = started_at + dur * 60;
-                        (started_at, finished_at)
-                    }
-                    (None, Some(f), dur) => {
-                        let dur = dur.unwrap_or(25) as i64;
-                        let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
-                            eprintln!("Error: {} --finished-at: {}", e, f);
-                            process::exit(1);
-                        });
-                        let started_at = finished_at - dur * 60;
-                        (started_at, finished_at)
-                    }
-                    (Some(s), Some(f), None) => {
-                        let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
-                            eprintln!("Error: {} --started-at: {}", e, s);
-                            process::exit(1);
-                        });
-                        let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
-                            eprintln!("Error: {} --finished-at: {}", e, f);
-                            process::exit(1);
-                        });
-                        (started_at, finished_at)
-                    }
-                    (Some(_), Some(_), Some(_)) => {
-                        eprintln!(
-                            "Error: cannot specify --duration when both --started-at and --finished-at are given."
-                        );
-                        process::exit(1);
-                    }
-                    (None, None, _) => {
-                        eprintln!(
-                            "Error: at least one of --started-at or --finished-at is required."
-                        );
-                        process::exit(1);
-                    }
-                };
-
-                if finished_at < started_at {
-                    eprintln!("Error: --finished-at must be after --started-at.");
-                    process::exit(1);
-                }
-
-                let actual_duration = (finished_at - started_at) / 60;
-
-                if verbose {
-                    println!(
-                        "Logging externally completed pomodoro ({} min)",
-                        actual_duration
-                    );
-                }
-
-                let mut pom = Schedulable::new(0, Kind::Pomodoro, actual_duration);
-                pom.started_at = started_at;
-                pom.finished_at = finished_at;
-
-                match scheduler.log(&pom) {
-                    Ok(_) => {}
-                    Err(err) => {
-                        eprintln!("Error: {}.", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            PomodoroCommands::Annotate(annotate_options) => {
-                let text = annotation_text(&annotate_options.words);
-                if text.is_empty() {
-                    eprintln!("Error: annotation text is empty.");
-                    process::exit(1);
-                }
-
-                if verbose {
-                    println!("Annotating with '{}'", text);
-                }
-
-                match scheduler.annotate(&text) {
-                    Ok(annotation) => {
-                        if verbose {
-                            println!("Annotated {}", annotation.body);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("Error: {}.", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            PomodoroCommands::Cancel(_) => match scheduler.cancel() {
-                Ok(schedulable) => {
-                    if verbose {
-                        println!("{}", schedulable);
-                    }
-                    match schedulable.kind {
-                        Kind::Pomodoro => process::exit(1),
-                        Kind::Break => process::exit(0),
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Error: {}.", err);
-                    process::exit(1);
-                }
-            },
+            PomodoroCommands::Log(ref opts) => cmd_pomodoro_log(&scheduler, opts, verbose),
+            PomodoroCommands::Annotate(ref opts) => cmd_annotate(&scheduler, &opts.words, verbose),
+            PomodoroCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
-        SubCommands::Status(_) => {
-            // TODO Re-use repo, but this will require a better understanding of lifetimes
-            match Repository::from_url(&db_url).active() {
-                Ok(schedulable) => match schedulable {
-                    Some(existing) => println!("{}", existing),
-                    None => println!("Nothing active"),
-                },
-                Err(e) => {
-                    eprintln!("{}", e)
-                }
-            }
-        }
-
-        SubCommands::List(list_options) => {
-            if list_options.limit == 0 {
-                eprintln!("Error: --limit must be > 0.");
-                process::exit(1);
-            }
-
-            let repo = Repository::from_url(&db_url);
-            let entries = match repo.list(list_options.limit as i64) {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("Error: {}.", e);
-                    process::exit(1);
-                }
-            };
-
-            if entries.is_empty() {
-                println!("No entries found.");
-                process::exit(0);
-            }
-
-            let uuids: Vec<_> = entries.iter().map(|s| s.uuid).collect();
-            let abbreviations = abbreviate_uuids(&uuids);
-            let uuid_width = abbreviations.first().map(|s| s.len()).unwrap_or(6);
-
-            // Column widths
-            let kind_width = entries
-                .iter()
-                .map(|s| s.kind.to_string().len())
-                .max()
-                .unwrap_or(8)
-                .max(4); // "Kind" header
-            let started_width = 12; // e.g. "Sat 11:42" or "2026-05-30" (max 12)
-
-            // Header
-            println!(
-                "{:width$}  {:kind_width$}  {:started_width$}  Timeline",
-                "UUID",
-                "Kind",
-                "Started",
-                width = uuid_width.max(4),
-                kind_width = kind_width,
-                started_width = started_width
-            );
-
-            // Separator
-            println!(
-                "{:-<width$}  {:-<kind_width$}  {:-<started_width$}  ---------",
-                "",
-                "",
-                "",
-                width = uuid_width.max(4),
-                kind_width = kind_width,
-                started_width = started_width
-            );
-
-            for (entry, abbrev) in entries.iter().zip(abbreviations.iter()) {
-                let started = format_started(entry.started_at);
-                let timeline = format_timeline(entry);
-                println!(
-                    "{:width$}  {:kind_width$}  {:started_width$}  {}",
-                    abbrev,
-                    entry.kind.to_string(),
-                    started,
-                    timeline,
-                    width = uuid_width.max(4),
-                    kind_width = kind_width,
-                    started_width = started_width
-                );
-            }
-        }
-
+        SubCommands::Status(_) => cmd_status(&db_url),
+        SubCommands::List(ref opts) => cmd_list(&db_url, opts),
         SubCommands::Break(break_options) => match break_options.subcmd {
-            BreakCommands::Start(start_break_options) => {
-                let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());
-
-                if verbose {
-                    println!("Starting {}", br3ak);
-                }
-
-                match scheduler.run(br3ak, start_break_options.force) {
-                    Ok(completed_break) => {
-                        if verbose {
-                            println!("\n{}", completed_break);
-                        }
-                        process::exit(0);
-                    }
-                    Err(err) => {
-                        match err {
-                            SchedulingError::AlreadyRunning(pid) => eprintln!(
-                                "Error: {}. Wait for the currently active pid {} to end, cancel it, or use --force.",
-                                err, pid
-                            ),
-                            SchedulingError::HookRejected => {
-                                process::exit(1);
-                            }
-                            _ => eprintln!("Error: {}.", err),
-                        }
-                        process::exit(1);
-                    }
-                }
-            }
-            BreakCommands::Annotate(annotate_options) => {
-                let text = annotation_text(&annotate_options.words);
-                if text.is_empty() {
-                    eprintln!("Error: annotation text is empty.");
-                    process::exit(1);
-                }
-
-                if verbose {
-                    println!("Annotating with '{}'", text);
-                }
-
-                match scheduler.annotate(&text) {
-                    Ok(annotation) => {
-                        if verbose {
-                            println!("Annotated {}", annotation.body);
-                        }
-                    }
-                    Err(err) => {
-                        eprintln!("Error: {}.", err);
-                        process::exit(1);
-                    }
-                }
-            }
-            BreakCommands::Cancel(_) => match scheduler.cancel() {
-                Ok(schedulable) => {
-                    if verbose {
-                        println!("{}", schedulable);
-                    }
-                    match schedulable.kind {
-                        Kind::Pomodoro => process::exit(1),
-                        Kind::Break => process::exit(0),
-                    }
-                }
-                Err(err) => {
-                    eprintln!("Error: {}.", err);
-                    process::exit(1);
-                }
-            },
+            BreakCommands::Start(ref opts) => cmd_break_start(&scheduler, opts, pid, verbose),
+            BreakCommands::Annotate(ref opts) => cmd_annotate(&scheduler, &opts.words, verbose),
+            BreakCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
         SubCommands::Report(report_options) => match report_options.subcmd {
             ReportCommands::Day(day_options) => {
-                use chrono::{Local, NaiveDate};
-                use std::collections::HashMap;
-
-                let date = match &day_options.date {
-                    Some(d) => NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap_or_else(|e| {
-                        eprintln!(
-                            "Error: invalid date '{}': {}. Expected format: YYYY-MM-DD",
-                            d, e
-                        );
-                        process::exit(1);
-                    }),
-                    None => Local::now().date_naive(),
-                };
-
-                let start_of_day = date
-                    .and_hms_opt(0, 0, 0)
-                    .and_then(|dt| dt.and_local_timezone(Local).earliest())
-                    .map(|dt| dt.timestamp())
-                    .unwrap_or(0);
-                let end_of_day = date
-                    .and_hms_opt(23, 59, 59)
-                    .and_then(|dt| dt.and_local_timezone(Local).earliest())
-                    .map(|dt| dt.timestamp())
-                    .unwrap_or(i64::MAX);
-
                 let repo = Repository::from_url(&db_url);
-
-                let entries = match repo.entries_between(start_of_day, end_of_day) {
-                    Ok(e) => e,
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                        process::exit(1);
-                    }
-                };
-
-                let interrupt_logs = match repo.interrupts_between(start_of_day, end_of_day) {
-                    Ok(l) => l,
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                        process::exit(1);
-                    }
-                };
-
-                let annotations = match repo.annotations_between(start_of_day, end_of_day) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        eprintln!("Error: {}", e);
-                        process::exit(1);
-                    }
-                };
-
-                // Group annotations by schedulable UUID for lookup
-                let mut ann_by_uuid: HashMap<String, Vec<&Annotation>> = HashMap::new();
-                for a in &annotations {
-                    ann_by_uuid
-                        .entry(a.schedulable_uuid.to_string())
-                        .or_default()
-                        .push(a);
-                }
-
-                // ── Print header ──────────────────────────────────
-                let day_name = date.format("%A");
-                println!("Report for {} ({})", date, day_name);
-                println!("{}\n", "─".repeat(35));
-
-                if entries.is_empty() {
-                    println!("Nothing recorded for this day.");
-                    process::exit(0);
-                }
-
-                // ── Entry list with annotations ────────────────────
-                for entry in &entries {
-                    let start = format_time(entry.started_at);
-                    let end = if entry.finished_at != 0 {
-                        format_time(entry.finished_at)
-                    } else if entry.cancelled_at != 0 {
-                        format_time(entry.cancelled_at)
-                    } else {
-                        "...".to_string()
-                    };
-
-                    let status_icon = match entry.status() {
-                        Status::Finished => "\u{2713}",
-                        Status::Cancelled => "\u{2717}",
-                        Status::Active => "\u{2026}",
-                        Status::Stale => "?",
-                        Status::New => "?",
-                    };
-
-                    let interrupt_info = if entry.interruptions > 0 {
-                        format!(" ({} int.)", entry.interruptions)
-                    } else {
-                        String::new()
-                    };
-
-                    println!(
-                        " {:>5} - {:<5}  {:<9} ({:>2} min)  {}{}",
-                        start,
-                        end,
-                        format!("{}", entry.kind),
-                        entry.duration,
-                        status_icon,
-                        interrupt_info,
-                    );
-
-                    // Annotations for this entry
-                    if let Some(notes) = ann_by_uuid.get(&entry.uuid.to_string()) {
-                        for note in notes {
-                            println!("    \u{2192} {}", note.body);
-                        }
-                    }
-                }
-                println!();
-
-                // ── Summary metrics ────────────────────────────────
-                let pomodori_completed = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Pomodoro && e.finished_at != 0)
-                    .count();
-                let pomodori_cancelled = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Pomodoro && e.cancelled_at != 0)
-                    .count();
-                let breaks_taken = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Break && e.finished_at != 0)
-                    .count();
-                let breaks_cancelled = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Break && e.cancelled_at != 0)
-                    .count();
-
-                let total_pomodori = pomodori_completed + pomodori_cancelled;
-                let completion_rate = if total_pomodori > 0 {
-                    (pomodori_completed as f64 / total_pomodori as f64 * 100.0) as u32
-                } else {
-                    0
-                };
-
-                // --- Interruption stats ---
-                let total_interruptions: i64 = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Pomodoro)
-                    .map(|e| e.interruptions)
-                    .sum();
-
-                let internal_count = interrupt_logs
-                    .iter()
-                    .filter(|l| l.kind == InterruptionKind::Internal)
-                    .count();
-                let external_count = interrupt_logs
-                    .iter()
-                    .filter(|l| l.kind == InterruptionKind::External)
-                    .count();
-
-                let avg_interruptions = if pomodori_completed > 0 {
-                    total_interruptions as f64 / pomodori_completed as f64
-                } else {
-                    0.0
-                };
-
-                // --- Break ratio ---
-                let break_ratio = if pomodori_completed > 0 {
-                    breaks_taken as f64 / pomodori_completed as f64
-                } else {
-                    0.0
-                };
-
-                // --- Longest uninterrupted sequence (focus block) ---
-                let max_focus_block = entries
-                    .iter()
-                    .filter(|e| e.kind == Kind::Pomodoro && e.finished_at != 0)
-                    .fold((0usize, 0usize), |(max, current), pom| {
-                        if pom.interruptions == 0 {
-                            let new_current = current + 1;
-                            (max.max(new_current), new_current)
-                        } else {
-                            (max, 0)
-                        }
-                    })
-                    .0;
-
-                println!(
-                    "Pomodori    {} completed  \u{00b7}  {} cancelled  \u{00b7}  {}% completion rate",
-                    pomodori_completed, pomodori_cancelled, completion_rate
-                );
-                println!(
-                    "Breaks      {} taken      \u{00b7}  {} cancelled",
-                    breaks_taken, breaks_cancelled
-                );
-                if pomodori_completed > 0 && breaks_taken > 0 {
-                    let ratio_indicator = if (0.5..=2.0).contains(&break_ratio) {
-                        "\u{2713}"
-                    } else {
-                        "\u{26a0}"
-                    };
-                    println!(
-                        "Ratio       {:.1} break per pomodoro  {}",
-                        break_ratio, ratio_indicator
-                    );
-                }
-                println!();
-
-                if max_focus_block > 1 {
-                    println!(
-                        "Longest focus block:  {} consecutive pomodori without interruption",
-                        max_focus_block
-                    );
-                    println!();
-                }
-
-                println!("Interruptions");
-                println!(
-                    "  Total:      {} ({:.1} avg per pomodoro)",
-                    total_interruptions, avg_interruptions
-                );
-                let total_logged = internal_count + external_count;
-                if total_logged > 0 {
-                    let internal_pct = (internal_count as f64 / total_logged as f64 * 100.0) as u32;
-                    let external_pct = (external_count as f64 / total_logged as f64 * 100.0) as u32;
-                    println!("  Internal:   {} ({}%)", internal_count, internal_pct);
-                    println!("  External:   {} ({}%)", external_count, external_pct);
-                } else if total_interruptions > 0 {
-                    println!(
-                        "  (Kind breakdown not available for interruptions recorded before the upgrade)"
-                    );
-                }
+                rustomato::report::print_day_report(&repo, day_options.date);
             }
             ReportCommands::Week(week_options) => {
                 rustomato::report::print_week_report(
@@ -921,17 +382,263 @@ fn main() {
     };
 }
 
-/// Format a Unix timestamp as "HH:MM".
-fn format_time(timestamp: i64) -> String {
-    use chrono::{Local, TimeZone};
-    if timestamp == 0 {
-        return "N/A".to_string();
+// ── Command handlers ────────────────────────────────────────────
+
+fn cmd_pomodoro_start(scheduler: &Scheduler, opts: &StartPomodoro, pid: u32, verbose: bool) {
+    let pom = Schedulable::new(pid, Kind::Pomodoro, opts.duration.into());
+    if verbose {
+        println!("Starting {}", pom);
     }
-    Local
-        .timestamp_opt(timestamp, 0)
-        .single()
-        .map(|dt| dt.format("%H:%M").to_string())
-        .unwrap_or_else(|| timestamp.to_string())
+    match scheduler.run(pom, opts.force) {
+        Ok(completed_pom) => {
+            if verbose {
+                println!("\n{}", completed_pom);
+            }
+            match completed_pom.status() {
+                Status::Cancelled => process::exit(1),
+                Status::Finished => process::exit(0),
+                _ => (),
+            }
+        }
+        Err(err) => {
+            match err {
+                SchedulingError::AlreadyRunning(_) => eprintln!("Error: {}.", err),
+                SchedulingError::HookRejected => process::exit(1),
+                _ => eprintln!("Error: {}.", err),
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_pomodoro_interrupt(scheduler: &Scheduler, opts: &InterruptPomodoro, verbose: bool) {
+    let kind = match InterruptionKind::from(&opts.kind) {
+        Ok(k) => k,
+        Err(e) => {
+            eprintln!("Error: {}.", e);
+            process::exit(1);
+        }
+    };
+    match scheduler.interrupt(kind) {
+        Ok(interrupted) => {
+            if verbose {
+                println!("{}", interrupted);
+            }
+            process::exit(0);
+        }
+        Err(err) => {
+            eprintln!("Error: {}.", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_pomodoro_log(scheduler: &Scheduler, opts: &LogPomodoro, verbose: bool) {
+    let (started_at, finished_at) = match (&opts.started_at, &opts.finished_at, opts.duration) {
+        (Some(s), None, dur) => {
+            let dur = dur.unwrap_or(25) as i64;
+            let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
+                eprintln!("Error: {} --started-at: {}", e, s);
+                process::exit(1);
+            });
+            let finished_at = started_at + dur * 60;
+            (started_at, finished_at)
+        }
+        (None, Some(f), dur) => {
+            let dur = dur.unwrap_or(25) as i64;
+            let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
+                eprintln!("Error: {} --finished-at: {}", e, f);
+                process::exit(1);
+            });
+            let started_at = finished_at - dur * 60;
+            (started_at, finished_at)
+        }
+        (Some(s), Some(f), None) => {
+            let started_at = rustomato::parse_timestamp(s).unwrap_or_else(|e| {
+                eprintln!("Error: {} --started-at: {}", e, s);
+                process::exit(1);
+            });
+            let finished_at = rustomato::parse_timestamp(f).unwrap_or_else(|e| {
+                eprintln!("Error: {} --finished-at: {}", e, f);
+                process::exit(1);
+            });
+            (started_at, finished_at)
+        }
+        (Some(_), Some(_), Some(_)) => {
+            eprintln!(
+                "Error: cannot specify --duration when both --started-at and --finished-at are given."
+            );
+            process::exit(1);
+        }
+        (None, None, _) => {
+            eprintln!("Error: at least one of --started-at or --finished-at is required.");
+            process::exit(1);
+        }
+    };
+
+    if finished_at < started_at {
+        eprintln!("Error: --finished-at must be after --started-at.");
+        process::exit(1);
+    }
+
+    let actual_duration = (finished_at - started_at) / 60;
+    if verbose {
+        println!(
+            "Logging externally completed pomodoro ({} min)",
+            actual_duration
+        );
+    }
+
+    let mut pom = Schedulable::new(0, Kind::Pomodoro, actual_duration);
+    pom.started_at = started_at;
+    pom.finished_at = finished_at;
+
+    if let Err(err) = scheduler.log(&pom) {
+        eprintln!("Error: {}.", err);
+        process::exit(1);
+    }
+}
+
+fn cmd_annotate(scheduler: &Scheduler, words: &[String], verbose: bool) {
+    let text = annotation_text(words);
+    if text.is_empty() {
+        eprintln!("Error: annotation text is empty.");
+        process::exit(1);
+    }
+    if verbose {
+        println!("Annotating with '{}'", text);
+    }
+    match scheduler.annotate(&text) {
+        Ok(annotation) => {
+            if verbose {
+                println!("Annotated {}", annotation.body);
+            }
+        }
+        Err(err) => {
+            eprintln!("Error: {}.", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_cancel(scheduler: &Scheduler, verbose: bool) {
+    match scheduler.cancel() {
+        Ok(schedulable) => {
+            if verbose {
+                println!("{}", schedulable);
+            }
+            match schedulable.kind {
+                Kind::Pomodoro => process::exit(1),
+                Kind::Break => process::exit(0),
+            }
+        }
+        Err(err) => {
+            eprintln!("Error: {}.", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_break_start(scheduler: &Scheduler, opts: &StartBreak, pid: u32, verbose: bool) {
+    let br3ak = Schedulable::new(pid, Kind::Break, opts.duration.into());
+    if verbose {
+        println!("Starting {}", br3ak);
+    }
+    match scheduler.run(br3ak, opts.force) {
+        Ok(completed_break) => {
+            if verbose {
+                println!("\n{}", completed_break);
+            }
+            process::exit(0);
+        }
+        Err(err) => {
+            match err {
+                SchedulingError::AlreadyRunning(_) => eprintln!("Error: {}.", err),
+                SchedulingError::HookRejected => process::exit(1),
+                _ => eprintln!("Error: {}.", err),
+            }
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_status(db_url: &Url) {
+    match Repository::from_url(db_url).active() {
+        Ok(schedulable) => match schedulable {
+            Some(existing) => println!("{}", existing),
+            None => println!("Nothing active"),
+        },
+        Err(e) => eprintln!("{}", e),
+    }
+}
+
+fn cmd_list(db_url: &Url, opts: &ListCommand) {
+    if opts.limit == 0 {
+        eprintln!("Error: --limit must be > 0.");
+        process::exit(1);
+    }
+
+    let repo = Repository::from_url(db_url);
+    let entries = match repo.list(opts.limit as i64) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Error: {}.", e);
+            process::exit(1);
+        }
+    };
+
+    if entries.is_empty() {
+        println!("No entries found.");
+        return;
+    }
+
+    let uuids: Vec<_> = entries.iter().map(|s| s.uuid).collect();
+    let abbreviations = abbreviate_uuids(&uuids);
+    let uuid_width = abbreviations.first().map(|s| s.len()).unwrap_or(6);
+    let kind_width = entries
+        .iter()
+        .map(|s| s.kind.to_string().len())
+        .max()
+        .unwrap_or(8)
+        .max(4);
+    let started_width = 12;
+
+    // Header
+    println!(
+        "{:width$}  {:kind_width$}  {:started_width$}  Timeline",
+        "UUID",
+        "Kind",
+        "Started",
+        width = uuid_width.max(4),
+        kind_width = kind_width,
+        started_width = started_width
+    );
+
+    // Separator
+    println!(
+        "{:-<width$}  {:-<kind_width$}  {:-<started_width$}  ---------",
+        "",
+        "",
+        "",
+        width = uuid_width.max(4),
+        kind_width = kind_width,
+        started_width = started_width
+    );
+
+    for (entry, abbrev) in entries.iter().zip(abbreviations.iter()) {
+        let started = format_started(entry.started_at);
+        let timeline = format_timeline(entry);
+        println!(
+            "{:width$}  {:kind_width$}  {:started_width$}  {}",
+            abbrev,
+            entry.kind.to_string(),
+            started,
+            timeline,
+            width = uuid_width.max(4),
+            kind_width = kind_width,
+            started_width = started_width
+        );
+    }
 }
 
 /// Format a started_at timestamp for the list view.
