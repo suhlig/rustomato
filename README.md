@@ -186,6 +186,41 @@ Interrupt hooks receive two additional environment variables:
 
 Use `--kind internal` (default) or `--kind external` to classify the interruption. Internal interruptions are self-inflicted (e.g. checking your phone); external ones are caused by the environment (e.g. a colleague knocking).
 
+# Annotations
+
+## Interactive annotation with `sk`
+
+For users who want to select a pomodoro interactively with a fuzzy-finder
+preview before annotating, install [skim](https://github.com/skim-rs/skim)
+and add this shell function:
+
+```sh
+rustomato-annotate() {
+  local target
+  target=$(
+    rustomato list --no-header \
+      | sk --delimiter ' ' --with-nth 1 \
+           --preview 'rustomato show {1}' \
+           --layout=reverse \
+      | cut -d' ' -f1
+  ) && rustomato pomodoro annotate --target "$target" "$@"
+}
+```
+
+What this does:
+
+| Step | Description |
+|---|---|
+| `rustomato list --no-header` | List recent entries, one per line, no header |
+| `sk --delimiter ' ' --with-nth 1` | Show only the UUID column; `{1}` in preview refers to the UUID |
+| `sk --preview 'rustomato show {1}'` | Show full details of the highlighted entry |
+| `cut -d' ' -f1` | Extract the UUID from the selected line |
+| `rustomato annotate --target "$target"` | Annotate with the chosen target |
+
+The preview window shows the full details of each entry as you arrow through
+the list. When you press enter, the annotation is applied to the selected
+pomodoro.
+
 # Installation
 
 ## Homebrew
@@ -247,7 +282,6 @@ cargo release patch
 
 # TODO
 
-* For the annotate command, add completion for `--target` with preview of the full list of recent pomodori, including their GUIDs and timestamps. On acceptance, just the UUID is used to identify the pomodoro.
 * In verbose mode, print the abbreviated UUID of the pomodoro or break that was just started
 * Provide man page and install it when homebrew is available (see [skim](https://github.com/skim-rs/skim) for an example)
 * Show progress bar only when attached to a terminal
