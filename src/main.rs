@@ -115,6 +115,10 @@ struct CancelPomodoro {}
 struct AnnotatePomodoro {
     /// The annotation text. Reads from STDIN if not provided.
     words: Vec<String>,
+
+    /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
 }
 
 /// Work with a break
@@ -159,6 +163,10 @@ struct CancelBreak {}
 struct AnnotateBreak {
     /// The annotation text. Reads from STDIN if not provided.
     words: Vec<String>,
+
+    /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
 }
 
 /// Finishes the active Break
@@ -335,14 +343,18 @@ fn main() {
                 cmd_pomodoro_interrupt(&scheduler, opts, verbose)
             }
             PomodoroCommands::Log(ref opts) => cmd_pomodoro_log(&scheduler, opts, verbose),
-            PomodoroCommands::Annotate(ref opts) => cmd_annotate(&scheduler, &opts.words, verbose),
+            PomodoroCommands::Annotate(ref opts) => {
+                cmd_annotate(&scheduler, &opts.words, opts.target.as_deref(), verbose)
+            }
             PomodoroCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
         SubCommands::Status(_) => cmd_status(&db_url),
         SubCommands::List(ref opts) => cmd_list(&db_url, opts),
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(ref opts) => cmd_break_start(&scheduler, opts, pid, verbose),
-            BreakCommands::Annotate(ref opts) => cmd_annotate(&scheduler, &opts.words, verbose),
+            BreakCommands::Annotate(ref opts) => {
+                cmd_annotate(&scheduler, &opts.words, opts.target.as_deref(), verbose)
+            }
             BreakCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
         SubCommands::Report(report_options) => match report_options.subcmd {
@@ -499,7 +511,7 @@ fn cmd_pomodoro_log(scheduler: &Scheduler, opts: &LogPomodoro, verbose: bool) {
     }
 }
 
-fn cmd_annotate(scheduler: &Scheduler, words: &[String], verbose: bool) {
+fn cmd_annotate(scheduler: &Scheduler, words: &[String], target: Option<&str>, verbose: bool) {
     let text = annotation_text(words);
     if text.is_empty() {
         eprintln!("Error: annotation text is empty.");
@@ -508,7 +520,11 @@ fn cmd_annotate(scheduler: &Scheduler, words: &[String], verbose: bool) {
     if verbose {
         println!("Annotating with '{}'", text);
     }
-    match scheduler.annotate(&text) {
+    let result = match target {
+        Some(t) => scheduler.annotate_target(&text, t),
+        None => scheduler.annotate(&text),
+    };
+    match result {
         Ok(annotation) => {
             if verbose {
                 println!("Annotated {}", annotation.body);

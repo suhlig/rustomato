@@ -247,9 +247,8 @@ cargo release patch
 
 # TODO
 
-* `rustomato pomodoro annotate --target <GUID>` adds an annotation to the pomodoro with the given GUID.
-  - When the symbolic `--target -1` is specified, the annotation is added to the most recent pomodoro (i.e. the one that was most recently completed). Extend that pattern to `-2` until `-9` for the most recent pomodori, even if they were earlier than today.
-  - When the argument to `--target` can be interpreted as a timestamp that falls into one of the most recent pomodori, the annotation is added to that pomodoro.
+* For the annotate command, add completion for `--target` with preview of the full list of recent pomodori, including their GUIDs and timestamps. On acceptance, just the UUID is used to identify the pomodoro.
+* In verbose mode, print the abbreviated UUID of the pomodoro or break that was just started
 * Show progress bar only when attached to a terminal
   - Should we make this a full TUI using Ratatui? Where does it end?
   - Also need to react to SIGWINCH to resize the progress bar

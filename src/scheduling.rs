@@ -1,6 +1,7 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
 use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
+use chrono::{Datelike, TimeZone};
 use pbr::ProgressBar;
 use std::fmt;
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ pub struct Scheduler {
     no_hooks: bool,
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum SchedulingError {
     ExecutionError,
     AlreadyRunning(u32),
@@ -40,6 +41,7 @@ pub enum SchedulingError {
     NoFinishedPomodoro,
     NothingToAnnotate,
     NothingToCancel,
+    CannotResolveTarget(String),
 }
 
 impl fmt::Display for SchedulingError {
@@ -67,6 +69,9 @@ impl fmt::Display for SchedulingError {
             }
             SchedulingError::NothingToAnnotate => {
                 write!(f, "nothing active or previously done to annotate")
+            }
+            SchedulingError::CannotResolveTarget(msg) => {
+                write!(f, "{}", msg)
             }
             SchedulingError::NothingToCancel => {
                 write!(f, "nothing active to cancel")
@@ -260,12 +265,83 @@ impl Scheduler {
             }
         };
 
+        self.save_annotation_for(&target, text)
+    }
+
+    /// Resolve a `--target` specifier to a `Schedulable`, then annotate it.
+    ///
+    /// Accepts:
+    /// - `-N` (1..=9): the Nth most recently finished pomodoro
+    /// - A UUID prefix (abbreviated)
+    /// - A timestamp (HH:MM or RFC 3339) that falls within a schedulable's time range
+    pub fn annotate_target(
+        &self,
+        text: &str,
+        raw_target: &str,
+    ) -> Result<Annotation, SchedulingError> {
+        let target = self.resolve_target(raw_target)?;
+        self.save_annotation_for(&target, text)
+    }
+
+    /// Resolve a target string to a Schedulable.
+    fn resolve_target(&self, raw: &str) -> Result<Schedulable, SchedulingError> {
+        // 1. Negative index -N (1..=9): Nth most recently finished pomodoro
+        if let Some(n) = parse_negative_index(raw) {
+            return self
+                .repo
+                .nth_most_recently_finished_pomodoro(n)
+                .map_err(|_| SchedulingError::ExecutionError)?
+                .ok_or_else(|| {
+                    SchedulingError::CannotResolveTarget(format!(
+                        "no finished pomodoro at position -{}",
+                        n
+                    ))
+                });
+        }
+
+        // 2. HH:MM timestamp — interpret as today at that time
+        if let Ok(ts) = parse_hhmm(raw)
+            && let Some(s) = self
+                .repo
+                .find_by_timestamp(ts)
+                .map_err(|_| SchedulingError::ExecutionError)?
+        {
+            return Ok(s);
+        }
+
+        // 3. RFC 3339 / ISO 8601 timestamp
+        if let Ok(ts) = super::parse_timestamp(raw)
+            && let Some(s) = self
+                .repo
+                .find_by_timestamp(ts)
+                .map_err(|_| SchedulingError::ExecutionError)?
+        {
+            return Ok(s);
+        }
+
+        // 4. UUID prefix (abbreviated or full)
+        if let Ok(s) = self.repo.find_by_uuid_prefix(raw) {
+            return Ok(s);
+        }
+
+        Err(SchedulingError::CannotResolveTarget(format!(
+            "cannot resolve '{}' to a pomodoro or break; try a UUID prefix, -1..-9, or a timestamp",
+            raw
+        )))
+    }
+
+    /// Save an annotation for the given target, running before/after hooks.
+    fn save_annotation_for(
+        &self,
+        target: &Schedulable,
+        text: &str,
+    ) -> Result<Annotation, SchedulingError> {
         let before_event = match target.kind {
             Kind::Pomodoro => HookEvent::BeforeAnnotatePomodoro,
             Kind::Break => HookEvent::BeforeAnnotateBreak,
         };
 
-        self.run_hook_with(before_event, &target, |ctx| {
+        self.run_hook_with(before_event, target, |ctx| {
             ctx.annotation = Some(text.to_string());
         })?;
 
@@ -286,7 +362,7 @@ impl Scheduler {
             Kind::Pomodoro => HookEvent::AfterAnnotatePomodoro,
             Kind::Break => HookEvent::AfterAnnotateBreak,
         };
-        self.run_hook_after_with(after_event, &target, |ctx| {
+        self.run_hook_after_with(after_event, target, |ctx| {
             ctx.annotation = Some(text.to_string());
         });
 
@@ -423,4 +499,44 @@ fn now() -> i64 {
         Ok(n) => n.as_secs() as i64,
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     }
+}
+
+/// Parse `-N` where N is 1..=9 and return `Some(N)`, or `None`.
+fn parse_negative_index(raw: &str) -> Option<u32> {
+    if raw.len() == 2 && raw.starts_with('-') {
+        let digit = raw.as_bytes()[1];
+        if (b'1'..=b'9').contains(&digit) {
+            return Some((digit - b'0') as u32);
+        }
+    }
+    None
+}
+
+/// Parse a time string in `HH:MM` (24-hour) format and return a Unix timestamp
+/// for that time on the current local date.
+fn parse_hhmm(raw: &str) -> Result<i64, String> {
+    let parts: Vec<&str> = raw.split(':').collect();
+    if parts.len() != 2 {
+        return Err(format!("not a valid HH:MM time: '{}'", raw));
+    }
+    let hours: u32 = parts[0]
+        .parse()
+        .map_err(|_| format!("not a valid HH:MM time: '{}'", raw))?;
+    let minutes: u32 = parts[1]
+        .parse()
+        .map_err(|_| format!("not a valid HH:MM time: '{}'", raw))?;
+
+    if hours > 23 || minutes > 59 {
+        return Err(format!("time out of range: '{}'", raw));
+    }
+
+    let now = chrono::Local::now();
+    let naive = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), now.day())
+        .and_then(|d| d.and_hms_opt(hours, minutes, 0))
+        .ok_or_else(|| format!("invalid date/time for '{}'", raw))?;
+    let local = chrono::Local
+        .from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| format!("ambiguous local time for '{}'", raw))?;
+    Ok(local.timestamp())
 }

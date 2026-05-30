@@ -184,6 +184,132 @@ mod integration_tests {
         assert!(result.is_none());
     }
 
+    // --- nth_most_recently_finished_pomodoro ----------------------------------
+
+    #[test]
+    fn nth_most_recently_finished_pomodoro_none_when_empty() {
+        let repo = Repository::new("file::memory:");
+        let result = repo
+            .nth_most_recently_finished_pomodoro(1)
+            .expect("querying");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn nth_most_recently_finished_pomodoro_returns_second_most_recent() {
+        let repo = Repository::new("file::memory:");
+
+        // First pomodoro (older, finished_at = 2000)
+        {
+            let mut pom = Schedulable::new(1, Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            repo.save(&pom).expect("saving first");
+            pom.finished_at = 2000;
+            repo.save(&pom).expect("finishing first");
+        }
+
+        // Second pomodoro (newer, finished_at = 4000)
+        {
+            let mut pom = Schedulable::new(2, Kind::Pomodoro, 25);
+            pom.started_at = 3000;
+            repo.save(&pom).expect("saving second");
+            pom.finished_at = 4000;
+            repo.save(&pom).expect("finishing second");
+        }
+
+        // Third pomodoro (most recent, finished_at = 6000)
+        {
+            let mut pom = Schedulable::new(3, Kind::Pomodoro, 25);
+            pom.started_at = 5000;
+            repo.save(&pom).expect("saving third");
+            pom.finished_at = 6000;
+            repo.save(&pom).expect("finishing third");
+        }
+
+        // index 2 = second most recent = finished_at 4000
+        let result = repo
+            .nth_most_recently_finished_pomodoro(2)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.finished_at, 4000);
+    }
+
+    // --- find_by_uuid_prefix --------------------------------------------------
+
+    #[test]
+    fn find_by_uuid_prefix_empty_prefix_fails() {
+        let repo = Repository::new("file::memory:");
+        let result = repo.find_by_uuid_prefix("deadbeef");
+        assert!(result.is_err());
+        assert_matches!(result, Err(PersistenceError::CannotFind(_)));
+    }
+
+    #[test]
+    fn find_by_uuid_prefix_matches_abbreviated() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing");
+
+        let uuid_str = pom.uuid.to_string();
+        let prefix = &uuid_str[..10];
+
+        let found = repo
+            .find_by_uuid_prefix(prefix)
+            .expect("should find by prefix");
+        assert_eq!(found.uuid.to_string(), uuid_str);
+    }
+
+    // --- find_by_timestamp ----------------------------------------------------
+
+    #[test]
+    fn find_by_timestamp_within_finished_range() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing");
+
+        // Timestamp in the middle of the range
+        let found = repo.find_by_timestamp(1500).expect("querying");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().started_at, 1000);
+    }
+
+    #[test]
+    fn find_by_timestamp_outside_range_returns_none() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing");
+
+        // Before started_at
+        assert!(repo.find_by_timestamp(500).expect("querying").is_none());
+        // After finished_at
+        assert!(repo.find_by_timestamp(2500).expect("querying").is_none());
+    }
+
+    #[test]
+    fn find_by_timestamp_matches_active_entry() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+
+        // Active entry has no finished_at, so any timestamp >= started_at should match
+        let found = repo.find_by_timestamp(1000).expect("querying");
+        assert!(found.is_some());
+    }
+
     #[test]
     fn pom_finished_before_started() {
         let repo = Repository::new("file::memory:");

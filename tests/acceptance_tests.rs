@@ -547,6 +547,120 @@ mod acceptance_tests {
             .stderr(predicate::str::contains("annotation text is empty"));
     }
 
+    // --- annotate with --target -------------------------------------------
+
+    #[test]
+    fn annotate_with_target_uuid_prefix() {
+        let dir = tempdir().unwrap();
+
+        // Seed a finished pomodoro
+        let pom_uuid = {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            let pom = repo.save(&pom).expect("saving active pomodoro");
+            let mut pom = repo.find_by_uuid(pom.uuid).unwrap();
+            pom.finished_at = 2000;
+            let pom = repo.save(&pom).expect("finishing pomodoro");
+            pom.uuid.to_string()
+        };
+
+        // Use an abbreviated prefix (first 8 chars)
+        let prefix = &pom_uuid[..8];
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("--target")
+            .arg(prefix)
+            .arg("matched")
+            .arg("by")
+            .arg("prefix")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn annotate_with_target_negative_index() {
+        let dir = tempdir().unwrap();
+
+        // Seed two finished pomodori, then annotate the second-most-recent (-2)
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+
+            // First pomodoro (older)
+            let mut p1 = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            p1.started_at = 1000;
+            let p1 = repo.save(&p1).expect("saving p1");
+            let mut p1 = repo.find_by_uuid(p1.uuid).unwrap();
+            p1.finished_at = 2000;
+            repo.save(&p1).expect("finishing p1");
+
+            // Second pomodoro (more recent)
+            let mut p2 = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            p2.started_at = 3000;
+            let p2 = repo.save(&p2).expect("saving p2");
+            let mut p2 = repo.find_by_uuid(p2.uuid).unwrap();
+            p2.finished_at = 4000;
+            repo.save(&p2).expect("finishing p2");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("--target")
+            .arg("-2")
+            .arg("second")
+            .arg("most")
+            .arg("recent")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn annotate_with_target_invalid_fails() {
+        let dir = tempdir().unwrap();
+
+        // Seed a finished pomodoro
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            let pom = repo.save(&pom).expect("saving active pomodoro");
+            let mut pom = repo.find_by_uuid(pom.uuid).unwrap();
+            pom.finished_at = 2000;
+            repo.save(&pom).expect("finishing pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("annotate")
+            .arg("--target")
+            .arg("nonexistent")
+            .arg("text")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("cannot resolve"));
+    }
+
     // --- log ---------------------------------------------------------------
 
     #[test]

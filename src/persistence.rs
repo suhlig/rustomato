@@ -246,6 +246,91 @@ impl Repository {
         }
     }
 
+    /// Find a schedulable by abbreviated UUID prefix.
+    /// Returns an error if the prefix matches zero or more than one row.
+    pub fn find_by_uuid_prefix(&self, prefix: &str) -> Result<Schedulable, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+                 FROM schedulables \
+                 WHERE uuid LIKE ?1",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        // The oldest UUID prefixes in the DB may be shorter than 6 chars for very old entries,
+        // so we match the prefix followed by '%'
+        let pattern = format!("{}%%", prefix);
+        let rows: Vec<Schedulable> = stmt
+            .query_map(params![pattern], row_to_schedulable)
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        match rows.len() {
+            0 => Err(PersistenceError::CannotFind(format!(
+                "no schedulable matches prefix '{}'",
+                prefix
+            ))),
+            1 => Ok(rows.into_iter().next().unwrap()),
+            n => Err(PersistenceError::CannotFind(format!(
+                "'{}' is ambiguous; matches {} schedulables",
+                prefix, n
+            ))),
+        }
+    }
+
+    /// Find the Nth most recently finished pomodoro across all time.
+    /// n = 1 is the most recent, n = 2 the second most recent, etc.
+    pub fn nth_most_recently_finished_pomodoro(
+        &self,
+        n: u32,
+    ) -> Result<Option<Schedulable>, PersistenceError> {
+        let offset = n.saturating_sub(1);
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+                 FROM schedulables \
+                 WHERE kind = 'pomodoro' AND finished_at != 0 \
+                 ORDER BY finished_at DESC \
+                 LIMIT 1 OFFSET ?1",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        match stmt.query_row(params![offset], row_to_schedulable) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
+    /// Find a schedulable (of any kind) whose time range contains the given timestamp.
+    /// The timestamp must be >= started_at, and for finished/cancelled entries must also
+    /// be <= finished_at or cancelled_at respectively. Active entries (no end time) will
+    /// match any timestamp >= started_at.
+    /// When multiple entries match, the one with the latest start time wins.
+    pub fn find_by_timestamp(&self, ts: i64) -> Result<Option<Schedulable>, PersistenceError> {
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+                 FROM schedulables \
+                 WHERE started_at <= ?1 \
+                   AND (finished_at IS NULL OR finished_at >= ?1) \
+                   AND (cancelled_at IS NULL OR cancelled_at >= ?1) \
+                 ORDER BY started_at DESC \
+                 LIMIT 1",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        match stmt.query_row(params![ts], row_to_schedulable) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
     /// Save an interrupt log entry.
     pub fn save_interrupt(&self, log: &InterruptLog) -> Result<InterruptLog, PersistenceError> {
         let uuid = log.uuid.to_string();
