@@ -40,6 +40,80 @@ The key difference between a pomodoro and a break is how they respond to interru
 * a pomodoro can be interrupted (keeping it running) or cancelled (via SIGINT), whereas
 * a break is simply finished — it does not accept interruptions and SIGINT finishes it rather than cancelling it.
 
+# Interrupts
+
+When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
+
+If no pomodoro is active but a break is running, the interruption is recorded on the most recently finished pomodoro.
+
+Interrupt hooks receive two additional environment variables:
+
+| Variable | Example | Description |
+|---|---|---|
+| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
+| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
+
+Use `--kind internal` (default) or `--kind external` to classify the interruption. Internal interruptions are self-inflicted (e.g. checking your phone); external ones are caused by the environment (e.g. a colleague knocking).
+
+# Annotations
+
+Annotations let you attach arbitrary text to a pomodoro or break. This is useful for noting what you worked on, capturing thoughts mid-session, or tagging entries for later review.
+
+```sh
+rustomato pomodoro annotate "Reviewed PR #42"
+rustomato break annotate "Coffee break"
+```
+
+If no annotation text is given on the command line, rustomato reads from stdin, which lets you pipe in content:
+
+```sh
+echo "Fixed the flaky test" | rustomato pomodoro annotate
+```
+
+## Target selection
+
+By default, the annotation is attached to the **active** pomodoro or break. If nothing is active, it falls back to the most recently ended entry.
+
+Use `--target` to annotate a specific entry:
+
+| Target format | Example | Description |
+|---|---|---|
+| UUID prefix | `--target a1b2c3` | An abbreviated or full UUID (minimum 6 chars) |
+| Negative index | `--target -1` | The most recently finished pomodoro (`-2` = second most recent, up to `-9`) |
+| Today's time | `--target 14:30` | The pomodoro or break running at that time today |
+| RFC 3339 | `--target 2026-05-30T14:30:00` | The pomodoro or break running at that absolute time |
+
+Targets are resolved using the same logic as `rustomato show <uuid>`, so any identifier that works with `show` also works with `--target`.
+
+## Interactive annotation with `sk`
+
+For users who want to select a pomodoro interactively with a fuzzy-finder preview before annotating, install [skim](https://github.com/skim-rs/skim) and add this shell function:
+
+```sh
+rustomato-annotate() {
+  local target
+  target=$(
+    rustomato list --no-header \
+      | sk --delimiter ' ' --with-nth 1 \
+           --preview 'rustomato show {1}' \
+           --layout=reverse \
+      | cut -d' ' -f1
+  ) && rustomato pomodoro annotate --target "$target" "$@"
+}
+```
+
+What this does:
+
+| Step | Description |
+|---|---|
+| `rustomato list --no-header` | List recent entries, one per line, no header |
+| `sk --delimiter ' ' --with-nth 1` | Show only the UUID column; `{1}` in preview refers to the UUID |
+| `sk --preview 'rustomato show {1}'` | Show full details of the highlighted entry |
+| `cut -d' ' -f1` | Extract the UUID from the selected line |
+| `rustomato annotate --target "$target"` | Annotate with the chosen target |
+
+The preview window shows the full details of each entry as you arrow through the list. When you press enter, the annotation is applied to the selected pomodoro.
+
 # Hooks
 
 Rustomato can run user-provided scripts — **hooks** — at key state transitions. Hooks live in `$RUSTOMATO_ROOT/hooks/` and are looked up by exact filename.
@@ -64,8 +138,10 @@ This creates the `hooks/` directory (inside `$RUSTOMATO_ROOT`) with executable s
 | `after-cancel-pomodoro` | Pomodoro cancelled | no |
 | `before-interrupt-pomodoro` | Before an interrupt is recorded | yes |
 | `after-interrupt-pomodoro` | Interrupt recorded | no |
-| `before-annotate-pomodoro` | Before an annotation is added | yes |
-| `after-annotate-pomodoro` | Annotation added | no |
+| `before-annotate-pomodoro` | Before an annotation is added to a pomodoro | yes |
+| `after-annotate-pomodoro` | Annotation added to a pomodoro | no |
+| `before-annotate-break` | Before an annotation is added to a break | yes |
+| `after-annotate-break` | Annotation added to a break | no |
 | `before-log-pomodoro` | Before an external pomodoro is logged | yes |
 | `after-log-pomodoro` | External pomodoro logged | no |
 | `before-start-break` | Before a break starts | yes |
@@ -98,8 +174,7 @@ Hooks that do not have the executable bit (`+x`) set are silently skipped (shown
 
 ## What hooks receive
 
-**First argument (`$1`):** the hook name, e.g. `before-start-pomodoro`.
-This lets a single script dispatch on the hook name if desired.
+**First argument (`$1`):** the hook name, e.g. `before-start-pomodoro`. This lets a single script dispatch on the hook name if desired.
 
 **Environment variables** (set for every hook):
 
@@ -114,7 +189,8 @@ This lets a single script dispatch on the hook name if desired.
 | `RUSTOMATO_FINISHED_AT` | `1748464864` | Unix timestamp (after-* only) |
 | `RUSTOMATO_CANCELLED_AT` | `1748464864` | Unix timestamp (after-* only) |
 | `RUSTOMATO_INTERRUPT_KIND` | `internal` | Kind of interrupt (`internal` or `external`; interrupt hooks only) |
-| `RUSTOMATO_INTERRUPTIONS` | `2` | Total interruption count on this schedulable (interrupt hooks only) |
+| `RUSTOMATO_INTERRUPTIONS` | `2` | Total interruption count on this pomodoro or break (interrupt hooks only) |
+| `RUSTOMATO_ANNOTATION` | `Reviewed PR #42` | Annotation body (annotate hooks only) |
 
 ## Timeout
 
@@ -170,56 +246,6 @@ echo "$RUSTOMATO_STARTED_AT Cancelled $RUSTOMATO_KIND $RUSTOMATO_UUID" \
   >> "$HOME/.rustomato_cancellations"
 exit 0
 ```
-
-# Interrupts
-
-When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
-
-If no pomodoro is active but a break is running, the interruption is recorded on the most recently finished pomodoro.
-
-Interrupt hooks receive two additional environment variables:
-
-| Variable | Example | Description |
-|---|---|---|
-| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
-| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
-
-Use `--kind internal` (default) or `--kind external` to classify the interruption. Internal interruptions are self-inflicted (e.g. checking your phone); external ones are caused by the environment (e.g. a colleague knocking).
-
-# Annotations
-
-## Interactive annotation with `sk`
-
-For users who want to select a pomodoro interactively with a fuzzy-finder
-preview before annotating, install [skim](https://github.com/skim-rs/skim)
-and add this shell function:
-
-```sh
-rustomato-annotate() {
-  local target
-  target=$(
-    rustomato list --no-header \
-      | sk --delimiter ' ' --with-nth 1 \
-           --preview 'rustomato show {1}' \
-           --layout=reverse \
-      | cut -d' ' -f1
-  ) && rustomato pomodoro annotate --target "$target" "$@"
-}
-```
-
-What this does:
-
-| Step | Description |
-|---|---|
-| `rustomato list --no-header` | List recent entries, one per line, no header |
-| `sk --delimiter ' ' --with-nth 1` | Show only the UUID column; `{1}` in preview refers to the UUID |
-| `sk --preview 'rustomato show {1}'` | Show full details of the highlighted entry |
-| `cut -d' ' -f1` | Extract the UUID from the selected line |
-| `rustomato annotate --target "$target"` | Annotate with the chosen target |
-
-The preview window shows the full details of each entry as you arrow through
-the list. When you press enter, the annotation is applied to the selected
-pomodoro.
 
 # Installation
 
