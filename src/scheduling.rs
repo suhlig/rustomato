@@ -411,6 +411,11 @@ impl Scheduler {
         };
         self.run_hook_after(event, &schedulable);
 
+        if self.verbose {
+            let uuid_str = format!("{}", schedulable.uuid);
+            eprintln!("  Started {} {}", schedulable.kind, &uuid_str[..8]);
+        }
+
         // --- wait for timer or Ctrl-C ---
         let cancelled = match waiter(schedulable.duration, schedulable.kind).recv() {
             Ok(cancelled) => cancelled,

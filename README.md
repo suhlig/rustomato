@@ -321,7 +321,6 @@ cargo release patch
 
 # TODO
 
-* In verbose mode, print the abbreviated UUID of the pomodoro or break that was just started
 * Provide man page and install it when homebrew is available (see [skim](https://github.com/skim-rs/skim) for an example)
 * Show progress bar only when attached to a terminal
   - Should we make this a full TUI using Ratatui? Where does it end?
