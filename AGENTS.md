@@ -222,9 +222,11 @@ rustomato
     interrupt [--kind internal|external]
     annotate [TEXT...]
     log      [--started-at TS] [--finished-at TS] [--duration MIN]
+    cancel
   break
     start    [--duration MIN] [--force]
     annotate [TEXT...]
+    cancel
   report
     day    [--date YYYY-MM-DD]
     week   [--date YYYY-MM-DD]
@@ -332,5 +334,7 @@ check.
 
 # Meta
 
+* Interview me about important decisions.
 * Update this document whenever changes are made to the project.
 * Run `pre-commit run --all-files` as a signal whether changes would be accepted.
+* Format commit messages using the [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) specification. Be concise and descriptive and focus primarily on the why, not the what of the commit.

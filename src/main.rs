@@ -55,6 +55,7 @@ enum PomodoroCommands {
     Interrupt(InterruptPomodoro),
     Annotate(AnnotatePomodoro),
     Log(LogPomodoro),
+    Cancel(CancelPomodoro),
 }
 
 /// Starts a Pomodoro
@@ -103,6 +104,10 @@ struct LogPomodoro {
     duration: Option<u8>,
 }
 
+/// Cancel the current Pomodoro
+#[derive(Parser)]
+struct CancelPomodoro {}
+
 /// Annotates a Pomodoro
 #[derive(Parser)]
 struct AnnotatePomodoro {
@@ -122,6 +127,7 @@ struct BreakCommand {
 enum BreakCommands {
     Start(StartBreak),
     Annotate(AnnotateBreak),
+    Cancel(CancelBreak),
 }
 
 /// Starts a break
@@ -141,6 +147,10 @@ struct StartBreak {
     #[clap(short, long)]
     force: bool,
 }
+
+/// Cancel the current Break
+#[derive(Parser)]
+struct CancelBreak {}
 
 /// Annotates a Break
 #[derive(Parser)]
@@ -470,6 +480,21 @@ fn main() {
                     }
                 }
             }
+            PomodoroCommands::Cancel(_) => match scheduler.cancel() {
+                Ok(schedulable) => {
+                    if verbose {
+                        println!("{}", schedulable);
+                    }
+                    match schedulable.kind {
+                        Kind::Pomodoro => process::exit(1),
+                        Kind::Break => process::exit(0),
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Error: {}.", err);
+                    process::exit(1);
+                }
+            },
         },
         SubCommands::Status(_) => {
             // TODO Re-use repo, but this will require a better understanding of lifetimes
@@ -537,6 +562,21 @@ fn main() {
                     }
                 }
             }
+            BreakCommands::Cancel(_) => match scheduler.cancel() {
+                Ok(schedulable) => {
+                    if verbose {
+                        println!("{}", schedulable);
+                    }
+                    match schedulable.kind {
+                        Kind::Pomodoro => process::exit(1),
+                        Kind::Break => process::exit(0),
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Error: {}.", err);
+                    process::exit(1);
+                }
+            },
         },
         SubCommands::Report(report_options) => match report_options.subcmd {
             ReportCommands::Day(day_options) => {

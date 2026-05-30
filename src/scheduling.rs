@@ -39,6 +39,7 @@ pub enum SchedulingError {
     NoActiveSchedulable,
     NoFinishedPomodoro,
     NothingToAnnotate,
+    NothingToCancel,
 }
 
 impl fmt::Display for SchedulingError {
@@ -62,6 +63,9 @@ impl fmt::Display for SchedulingError {
             }
             SchedulingError::NothingToAnnotate => {
                 write!(f, "nothing active or previously done to annotate")
+            }
+            SchedulingError::NothingToCancel => {
+                write!(f, "nothing active to cancel")
             }
         }
     }
@@ -190,6 +194,41 @@ impl Scheduler {
         self.run_hook_after_with_interrupt_kind(HookEvent::AfterInterruptPomodoro, &updated, &kind);
 
         Ok(updated)
+    }
+
+    /// Cancel the currently active schedulable.
+    /// Pomodoro → cancel (cancelled_at). Break → finish (finished_at).
+    /// Returns `NothingToCancel` if nothing is active.
+    pub fn cancel(&self) -> Result<Schedulable, SchedulingError> {
+        let active = self
+            .repo
+            .active()
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        let schedulable = active.ok_or(SchedulingError::NothingToCancel)?;
+
+        match schedulable.kind {
+            Kind::Pomodoro => {
+                self.run_hook(HookEvent::BeforeCancelPomodoro, &schedulable)?;
+                let mut cancelled = schedulable;
+                cancelled.cancelled_at = now();
+                self.repo
+                    .save(&cancelled)
+                    .expect("Unable to persist cancelled pomodoro");
+                self.run_hook_after(HookEvent::AfterCancelPomodoro, &cancelled);
+                Ok(cancelled)
+            }
+            Kind::Break => {
+                self.run_hook(HookEvent::BeforeFinishBreak, &schedulable)?;
+                let mut finished = schedulable;
+                finished.finished_at = now();
+                self.repo
+                    .save(&finished)
+                    .expect("Unable to persist finished break");
+                self.run_hook_after(HookEvent::AfterFinishBreak, &finished);
+                Ok(finished)
+            }
+        }
     }
 
     /// Access the underlying repository (used in tests).

@@ -219,7 +219,7 @@ arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && cur
 Cut a new release with a single command:
 
 ```sh
-cargo release patch   # or `minor`, or `major`
+cargo release patch --execute # or `minor`, or `major`
 ```
 
 This will:
@@ -230,10 +230,10 @@ This will:
 - Create a git tag (e.g. `v0.0.11`)
 - Push the commit and tag to GitHub, where `release.yml` builds and publishes the artifacts
 
-To preview without making changes, add `--dry-run`:
+To preview without making changes, do not specify `--execute`:
 
 ```sh
-cargo release patch --dry-run
+cargo release patch
 ```
 
 # Development
@@ -247,11 +247,11 @@ cargo release patch --dry-run
 
 # TODO
 
-* `rustomato pomodoro cancel` cancels the current pomodoro. Fails if there is no current pomodoro.
 * `rustomato pomodoro list` shows a list of all pomodori that were attempted or completed today.
 * `rustomato pomodoro annotate --target <GUID>` adds an annotation to the pomodoro with the given GUID.
   - When the symbolic `--target -1` is specified, the annotation is added to the most recent pomodoro (i.e. the one that was most recently completed). Extend that pattern to `-2` until `-9` for the most recent pomodori, even if they were earlier than today.
   - When the argument to `--target` can be interpreted as a timestamp that falls into one of the most recent pomodori, the annotation is added to that pomodoro.
 * Show progress bar only when attached to a terminal
   - Should we make this a full TUI using Ratatui? Where does it end?
+  - Also need to react to SIGWINCH to resize the progress bar
 * Does a CSV export of pomodori and breaks make sense for externally created reports?
