@@ -284,7 +284,7 @@ impl Scheduler {
     }
 
     /// Resolve a target string to a Schedulable.
-    fn resolve_target(&self, raw: &str) -> Result<Schedulable, SchedulingError> {
+    pub fn resolve_target(&self, raw: &str) -> Result<Schedulable, SchedulingError> {
         // 1. Negative index -N (1..=9): Nth most recently finished pomodoro
         if let Some(n) = parse_negative_index(raw) {
             return self

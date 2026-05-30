@@ -350,6 +350,34 @@ impl Repository {
         }
     }
 
+    /// Fetch interrupt logs for a specific schedulable, ordered by created_at.
+    pub fn interrupts_for(
+        &self,
+        schedulable_uuid: SqlUuid,
+    ) -> Result<Vec<InterruptLog>, PersistenceError> {
+        let uuid_s = schedulable_uuid.to_string();
+
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, schedulable_uuid, kind, created_at \
+             FROM interrupt_log \
+             WHERE schedulable_uuid=?1 \
+             ORDER BY created_at ASC",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let rows = stmt
+            .query_map(params![uuid_s], row_to_interrupt_log)
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
+        }
+        Ok(result)
+    }
+
     /// Fetch interrupt logs within a time range (inclusive), ordered by created_at.
     pub fn interrupts_between(
         &self,

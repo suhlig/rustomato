@@ -3,7 +3,7 @@ use clap_complete::{Shell, generate};
 use rustomato::hooks;
 use rustomato::persistence::Repository;
 use rustomato::scheduling::{Scheduler, SchedulingError};
-use rustomato::{InterruptionKind, Kind, Schedulable, Status, abbreviate_uuids};
+use rustomato::{InterruptionKind, Kind, Schedulable, Status, abbreviate_uuids, format_timestamp};
 use std::io;
 use std::path::*;
 use std::{env, process};
@@ -33,6 +33,8 @@ enum SubCommands {
     Status(StatusCommand),
     /// List recent pomodori and breaks
     List(ListCommand),
+    /// Show details of a specific pomodoro or break
+    Show(ShowCommand),
     /// Generate a productivity report
     Report(ReportCommand),
     #[clap(hide = true)]
@@ -183,6 +185,17 @@ struct ListCommand {
     /// Maximum number of entries to show
     #[clap(short, long, default_value = "10")]
     limit: u32,
+
+    /// Omit the header and separator lines (useful for scripting)
+    #[clap(long)]
+    no_header: bool,
+}
+
+/// Show details of a specific pomodoro or break
+#[derive(Parser)]
+struct ShowCommand {
+    /// UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
+    uuid: String,
 }
 
 /// Generate shell completions
@@ -350,6 +363,7 @@ fn main() {
         },
         SubCommands::Status(_) => cmd_status(&db_url),
         SubCommands::List(ref opts) => cmd_list(&db_url, opts),
+        SubCommands::Show(ref opts) => cmd_show(&db_url, opts),
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(ref opts) => cmd_break_start(&scheduler, opts, pid, verbose),
             BreakCommands::Annotate(ref opts) => {
@@ -619,27 +633,29 @@ fn cmd_list(db_url: &Url, opts: &ListCommand) {
         .max(4);
     let started_width = 12;
 
-    // Header
-    println!(
-        "{:width$}  {:kind_width$}  {:started_width$}  Timeline",
-        "UUID",
-        "Kind",
-        "Started",
-        width = uuid_width.max(4),
-        kind_width = kind_width,
-        started_width = started_width
-    );
+    if !opts.no_header {
+        // Header
+        println!(
+            "{:width$}  {:kind_width$}  {:started_width$}  Timeline",
+            "UUID",
+            "Kind",
+            "Started",
+            width = uuid_width.max(4),
+            kind_width = kind_width,
+            started_width = started_width
+        );
 
-    // Separator
-    println!(
-        "{:-<width$}  {:-<kind_width$}  {:-<started_width$}  ---------",
-        "",
-        "",
-        "",
-        width = uuid_width.max(4),
-        kind_width = kind_width,
-        started_width = started_width
-    );
+        // Separator
+        println!(
+            "{:-<width$}  {:-<kind_width$}  {:-<started_width$}  ---------",
+            "",
+            "",
+            "",
+            width = uuid_width.max(4),
+            kind_width = kind_width,
+            started_width = started_width
+        );
+    }
 
     for (entry, abbrev) in entries.iter().zip(abbreviations.iter()) {
         let started = format_started(entry.started_at);
@@ -654,6 +670,99 @@ fn cmd_list(db_url: &Url, opts: &ListCommand) {
             kind_width = kind_width,
             started_width = started_width
         );
+    }
+}
+
+/// Show detailed information about a single schedulable.
+fn cmd_show(db_url: &Url, opts: &ShowCommand) {
+    let repo = Repository::from_url(db_url);
+
+    // Use the scheduler's resolve_target logic: UUID prefix, -N, or timestamp
+    // Build a temporary scheduler with no hooks so we can use resolve_target
+    let sched = Scheduler::new(
+        repo,
+        PathBuf::from("/"),
+        false,
+        true, // no-hooks
+    );
+
+    let schedulable = match sched.resolve_target(&opts.uuid) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error: {}.", e);
+            process::exit(1);
+        }
+    };
+
+    let annotations = sched
+        .repo()
+        .annotations_for(schedulable.uuid)
+        .unwrap_or_default();
+    let interrupts = sched
+        .repo()
+        .interrupts_for(schedulable.uuid)
+        .unwrap_or_default();
+
+    let status_str = match schedulable.status() {
+        Status::Active => "active",
+        Status::Stale => "stale",
+        Status::Finished => "finished",
+        Status::Cancelled => "cancelled",
+        Status::New => "new",
+    };
+
+    let duration_min = schedulable.duration;
+    let started_str = format_timestamp(schedulable.started_at);
+    let finished_str = if schedulable.finished_at != 0 {
+        format_timestamp(schedulable.finished_at)
+    } else if schedulable.cancelled_at != 0 {
+        format_timestamp(schedulable.cancelled_at)
+    } else {
+        String::from("—")
+    };
+
+    // Compute elapsed duration for display
+    let elapsed = if schedulable.finished_at != 0 {
+        schedulable.finished_at - schedulable.started_at
+    } else if schedulable.cancelled_at != 0 {
+        schedulable.cancelled_at - schedulable.started_at
+    } else {
+        0
+    };
+    let elapsed_min = elapsed / 60;
+
+    println!("  Kind: {}", schedulable.kind);
+    println!("Status: {}", status_str);
+    println!(
+        "  When: {} → {} ({} min / planned {})",
+        started_str, finished_str, elapsed_min, duration_min
+    );
+    println!("    ID: {}", schedulable.uuid);
+    println!("    ");
+
+    // Annotations
+    println!("Annotations:");
+    if annotations.is_empty() {
+        println!("  (none)");
+    } else {
+        for a in &annotations {
+            println!("  • {} ({})", a.body, format_timestamp(a.created_at));
+        }
+    }
+    println!();
+
+    // Interrupts
+    println!("Interrupts:");
+    if interrupts.is_empty() {
+        println!("  (none)");
+    } else {
+        for i in &interrupts {
+            println!(
+                "  • {} ({})",
+                i.kind.as_str(),
+                format_timestamp(i.created_at)
+            );
+        }
     }
 }
 
