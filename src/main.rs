@@ -141,15 +141,9 @@ enum BreakCommands {
 /// Starts a break
 #[derive(Parser)]
 struct StartBreak {
-    /// How many minutes this break should last
-    #[clap(
-        short,
-        long,
-        required(false),
-        default_value("5"),
-        value_name("DURATION")
-    )]
-    duration: u8,
+    /// How many minutes this break should last (default depends on pomodoro count)
+    #[clap(short, long, value_name = "DURATION")]
+    duration: Option<u8>,
 
     /// Cancel whatever may currently be running before starting the break
     #[clap(short, long)]
@@ -570,7 +564,19 @@ fn cmd_cancel(scheduler: &Scheduler, verbose: bool) {
 }
 
 fn cmd_break_start(scheduler: &Scheduler, opts: &StartBreak, pid: u32, verbose: bool) {
-    let br3ak = Schedulable::new(pid, Kind::Break, opts.duration.into());
+    let duration = match opts.duration {
+        Some(d) => d as i64,
+        None => {
+            let count = scheduler.repo().consecutive_pomodoro_count().unwrap_or(0);
+            if count > 0 && count % 4 == 0 {
+                eprintln!("Using 15-minute long break after {} pomodori", count);
+                15
+            } else {
+                5
+            }
+        }
+    };
+    let br3ak = Schedulable::new(pid, Kind::Break, duration);
     if verbose {
         println!("Starting {}", br3ak);
     }

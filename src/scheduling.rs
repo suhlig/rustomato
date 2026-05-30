@@ -412,7 +412,7 @@ impl Scheduler {
         self.run_hook_after(event, &schedulable);
 
         // --- wait for timer or Ctrl-C ---
-        let cancelled = match waiter(schedulable.duration).recv() {
+        let cancelled = match waiter(schedulable.duration, schedulable.kind).recv() {
             Ok(cancelled) => cancelled,
             Err(_) => return Err(SchedulingError::ExecutionError),
         };
@@ -455,7 +455,7 @@ impl Scheduler {
     }
 }
 
-fn waiter(duration: i64) -> Receiver<bool> {
+fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
     init_ctrlc_handler();
     let (result_tx, result_rx) = channel::<bool>();
 
@@ -466,6 +466,7 @@ fn waiter(duration: i64) -> Receiver<bool> {
     pb.show_counter = false;
     pb.show_time_left = false;
     pb.show_tick = false;
+    pb.show_percent = false;
 
     thread::spawn({
         move || {
@@ -478,7 +479,18 @@ fn waiter(duration: i64) -> Receiver<bool> {
                     return;
                 }
 
-                pb.set(start.elapsed().as_secs());
+                let elapsed = start.elapsed();
+                let remaining = total.saturating_sub(elapsed);
+                let em = elapsed.as_secs() / 60;
+                let es = elapsed.as_secs() % 60;
+                let rm = remaining.as_secs() / 60;
+                let rs = remaining.as_secs() % 60;
+
+                pb.message(&format!(
+                    "{}  {:02}:{:02} / {:02}:{:02} ",
+                    kind, em, es, rm, rs,
+                ));
+                pb.set(elapsed.as_secs());
 
                 if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
                     let _ = result_tx.send(true);

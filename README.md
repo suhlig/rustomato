@@ -40,6 +40,19 @@ The key difference between a pomodoro and a break is how they respond to interru
 * a pomodoro can be interrupted (keeping it running) or cancelled (via SIGINT), whereas
 * a break is simply finished — it does not accept interruptions and SIGINT finishes it rather than cancelling it.
 
+# Breaks
+
+Following the classic Pomodoro Technique (Cirillo), `break start` automatically picks a duration based on how many finished pomodori have been completed consecutively:
+
+| Pomodori since last reset | Break duration |
+|---|---|
+| 0–3 | 5 min (short break) |
+| 4, 8, 12, … | 15 min (long break) |
+
+The counter resets after a long break (`duration >= 10`) or at midnight. Short breaks (`duration < 10`) do not reset the counter — they extend the current set. Only finished pomodori count toward the total; cancelled and stale entries are ignored.
+
+Pass `--duration` explicitly to override the auto-calculated duration.
+
 # Interrupts
 
 When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
@@ -313,5 +326,4 @@ cargo release patch
 * Show progress bar only when attached to a terminal
   - Should we make this a full TUI using Ratatui? Where does it end?
   - Also need to react to SIGWINCH to resize the progress bar
-  - Shall we also print times elapsed and remaining?
 * Does a CSV export of pomodori and breaks make sense for externally created reports?

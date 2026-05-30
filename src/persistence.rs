@@ -481,6 +481,57 @@ impl Repository {
         Ok(result)
     }
 
+    /// Count the number of finished pomodori since the last long break (or since midnight today,
+    /// whichever is more recent). Used to determine the suggested break duration.
+    ///
+    /// Uses the real system clock to determine "today". For deterministic behaviour in tests,
+    /// see [`consecutive_pomodoro_count_at`].
+    pub fn consecutive_pomodoro_count(&self) -> Result<i64, PersistenceError> {
+        let now_ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        self.consecutive_pomodoro_count_at(now_ts)
+    }
+
+    /// Like [`consecutive_pomodoro_count`], but uses the given Unix timestamp as the reference
+    /// for determining the current day. This allows deterministic testing.
+    pub fn consecutive_pomodoro_count_at(&self, now_ts: i64) -> Result<i64, PersistenceError> {
+        use chrono::{Local, TimeZone};
+
+        // Get midnight of the day containing now_ts
+        let now_dt = Local.timestamp_opt(now_ts, 0).single().unwrap();
+        let midnight = now_dt.date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let midnight_ts = Local
+            .from_local_datetime(&midnight)
+            .single()
+            .unwrap()
+            .timestamp();
+
+        // Find the most recent long break's finished_at (since midnight)
+        let last_long_break_ts: i64 = self
+            .db
+            .query_row(
+                "SELECT COALESCE(MAX(finished_at), 0) FROM schedulables \
+                 WHERE kind = 'break' AND finished_at != 0 AND duration >= 10 AND finished_at >= ?1",
+                params![midnight_ts],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let since = std::cmp::max(midnight_ts, last_long_break_ts);
+
+        // Count finished pomodori since that timestamp
+        self.db
+            .query_row(
+                "SELECT COUNT(*) FROM schedulables \
+                 WHERE kind = 'pomodoro' AND finished_at != 0 AND finished_at >= ?1",
+                params![since],
+                |row| row.get(0),
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))
+    }
+
     /// Directly insert a finished pomodoro (for external log).
     /// The entry is inserted with pid=NULL, finished_at set, and the no-overlap trigger
     /// (Rule #1) is checked.

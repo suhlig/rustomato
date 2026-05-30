@@ -110,6 +110,42 @@ on startup in order. Each runs in a transaction and is recorded in the
   - `New` → error (not started yet).
 - `save_external_finished(&Schedulable)` — INSERT with `pid = NULL` and
   `finished_at` set. Used by `rustomato pomodoro log`. Checks Rule #1.
+- `consecutive_pomodoro_count() -> i64` — counts finished pomodori since the
+  last long break (or since midnight today, whichever is more recent). Used by
+  `break start` to auto-calculate break duration.
+- `consecutive_pomodoro_count_at(now_ts) -> i64` — same but with an injected
+  reference timestamp for deterministic testing.
+
+---
+
+## Break Duration Auto-Calculation
+
+Following the classic Pomodoro Technique (Cirillo), `break start` without an
+`--duration` flag automatically picks a duration based on how many pomodori
+have been finished consecutively:
+
+| Pomodori since last reset | Break duration |
+|---|---|
+| 0–3 | 5 min (short break) |
+| 4, 8, 12, … | 15 min (long break) |
+
+The counter resets in two situations:
+1. **After a long break** — a finished break with `duration >= 10` is
+   considered a long break and resets the consecutive pomodoro count.
+2. **At midnight** — each day starts with a fresh count.
+
+Short breaks (`duration < 10`) do **not** reset the counter — they extend
+the current pomodoro set.
+
+Only **finished** pomodori (`finished_at != 0`) count toward the total;
+cancelled and stale pomodori are ignored.
+
+When the user passes `--duration` explicitly, it overrides auto-calculation
+entirely. A message is printed to stderr when a long break is auto-selected:
+
+```
+Using 15-minute long break after 4 pomodori
+```
 
 ---
 
@@ -130,7 +166,9 @@ on startup in order. Each runs in a transaction and is recorded in the
    should not happen if force was used, but covers the case where no force
    was requested).
 4. **After-start hook** — failure is non-fatal (logged if verbose).
-5. **Timer loop** — spawned thread with a `ProgressBar`. Polls every 25ms:
+5. **Timer loop** — spawned thread with a `ProgressBar`. Polls every 25ms,
+   showing elapsed and remaining time (e.g. `Pomodoro  01:30 / 05:00`)
+   instead of percentage:
    - Timer expired → send `false` on channel.
    - `CTRLC_PRESSED` atomic flag → send `true` on channel.
 6. **Finish/Cancel** — depending on kind and whether Ctrl-C was pressed:

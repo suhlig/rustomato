@@ -691,6 +691,134 @@ mod integration_tests {
             .expect("querying interrupts");
         assert_eq!(logs.len(), 1);
     }
+
+    // --- consecutive_pomodoro_count ------------------------------------------
+
+    #[test]
+    fn consecutive_pomodoro_count_none() {
+        let repo = Repository::new("file::memory:");
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn consecutive_pomodoro_count_single_finished() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing");
+
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn consecutive_pomodoro_count_ignores_cancelled() {
+        let repo = Repository::new("file::memory:");
+
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving active");
+        pom.cancelled_at = 1500;
+        repo.save(&pom).expect("cancelling");
+
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn consecutive_pomodoro_count_four_finished() {
+        let repo = Repository::new("file::memory:");
+
+        for i in 0..4 {
+            let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+            pom.started_at = 1000 + i * 2000;
+            repo.save(&pom).expect("saving active");
+            pom.finished_at = 2000 + i * 2000;
+            repo.save(&pom).expect("finishing");
+        }
+
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn consecutive_pomodoro_count_resets_after_long_break() {
+        let repo = Repository::new("file::memory:");
+
+        // Three finished pomodori
+        for i in 0..3 {
+            let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+            pom.started_at = 1000 + i * 2000;
+            repo.save(&pom).expect("saving active");
+            pom.finished_at = 2000 + i * 2000;
+            repo.save(&pom).expect("finishing");
+        }
+
+        // A long break (duration = 15 >= threshold of 10)
+        let mut brk = Schedulable::new(0, Kind::Break, 15);
+        brk.started_at = 7000;
+        brk.finished_at = 8000;
+        repo.save_external_finished(&brk)
+            .expect("saving long break");
+
+        // Another finished pomodoro after the long break
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 9000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 10000;
+        repo.save(&pom).expect("finishing");
+
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn consecutive_pomodoro_count_short_break_does_not_reset() {
+        let repo = Repository::new("file::memory:");
+
+        // Three finished pomodori
+        for i in 0..3 {
+            let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+            pom.started_at = 1000 + i * 2000;
+            repo.save(&pom).expect("saving active");
+            pom.finished_at = 2000 + i * 2000;
+            repo.save(&pom).expect("finishing");
+        }
+
+        // A short break (duration = 5 < threshold of 10) — should NOT reset
+        let mut brk = Schedulable::new(0, Kind::Break, 5);
+        brk.started_at = 7000;
+        brk.finished_at = 7300;
+        repo.save_external_finished(&brk)
+            .expect("saving short break");
+
+        // Another finished pomodoro after the short break
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 8000;
+        repo.save(&pom).expect("saving active");
+        pom.finished_at = 9000;
+        repo.save(&pom).expect("finishing");
+
+        // Count should be 4 (3 before + 1 after short break)
+        let count = repo
+            .consecutive_pomodoro_count_at(10000)
+            .expect("querying count");
+        assert_eq!(count, 4);
+    }
 }
 
 // --- parse_timestamp ---------------------------------------------------------
