@@ -31,7 +31,6 @@ enum SubCommands {
     Pomodoro(PomodoroCommand),
     Break(BreakCommand),
     Status(StatusCommand),
-    Journal(JournalCommand),
     /// Generate a productivity report
     Report(ReportCommand),
     #[clap(hide = true)]
@@ -157,10 +156,6 @@ struct FinishBreak {}
 /// Report status
 #[derive(Parser)]
 struct StatusCommand {}
-
-/// Show today's journal of pomodori and breaks
-#[derive(Parser)]
-struct JournalCommand {}
 
 /// Generate shell completions
 #[derive(Parser)]
@@ -488,62 +483,7 @@ fn main() {
                 }
             }
         }
-        SubCommands::Journal(_) => {
-            use chrono::Local;
 
-            match Repository::from_url(&db_url).today() {
-                Ok(entries) => {
-                    if entries.is_empty() {
-                        println!("No entries for today.");
-                    } else {
-                        let today = Local::now().date_naive();
-                        println!("Journal for {}:\n", today);
-
-                        for entry in &entries {
-                            let start = rustomato::format_timestamp(entry.started_at);
-                            let end = if entry.finished_at != 0 {
-                                rustomato::format_timestamp(entry.finished_at)
-                            } else if entry.cancelled_at != 0 {
-                                rustomato::format_timestamp(entry.cancelled_at)
-                            } else {
-                                "...".to_string()
-                            };
-
-                            let status_icon = match entry.status() {
-                                Status::Finished => "[finished]",
-                                Status::Cancelled => "[cancelled]",
-                                Status::Active => "[active]",
-                                Status::Stale => "[stale]",
-                                Status::New => "?",
-                            };
-
-                            let interrupt_info = if entry.interruptions > 0 {
-                                format!(
-                                    " ({} interruption{})",
-                                    entry.interruptions,
-                                    if entry.interruptions == 1 { "" } else { "s" }
-                                )
-                            } else {
-                                String::new()
-                            };
-                            println!(
-                                "  {:>8} - {:<8}  {:<10} ({:>2} min)  {}{}",
-                                start,
-                                end,
-                                format!("{}", entry.kind),
-                                entry.duration,
-                                status_icon,
-                                interrupt_info
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("{}", e);
-                    process::exit(1);
-                }
-            }
-        }
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(start_break_options) => {
                 let br3ak = Schedulable::new(pid, Kind::Break, start_break_options.duration.into());

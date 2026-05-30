@@ -604,14 +604,6 @@ mod acceptance_tests {
             .arg("25")
             .assert()
             .success();
-
-        // Verify it appears in the journal
-        rustomato()
-            .env("RUSTOMATO_ROOT", dir.path())
-            .arg("journal")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("finished"));
     }
 
     #[test]
@@ -629,14 +621,6 @@ mod acceptance_tests {
             .arg("25")
             .assert()
             .success();
-
-        // Verify via verbose that duration was recorded
-        rustomato()
-            .env("RUSTOMATO_ROOT", dir.path())
-            .arg("journal")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("25 min"));
     }
 
     #[test]

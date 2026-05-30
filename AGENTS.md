@@ -332,4 +332,5 @@ check.
 
 # Meta
 
-Update this document whenever changes are made to the project.
+* Update this document whenever changes are made to the project.
+* Run `pre-commit run --all-files` as a signal whether changes would be accepted.

@@ -203,55 +203,6 @@ mod integration_tests {
         }
     }
 
-    #[test]
-    fn today_empty() {
-        let repo = Repository::new("file::memory:");
-        let entries = repo.today().expect("querying today");
-        assert!(entries.is_empty());
-    }
-
-    #[test]
-    fn today_with_entries() {
-        use chrono::Local;
-
-        let repo = Repository::new("file::memory:");
-        let now = Local::now().timestamp();
-
-        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
-        pom.started_at = now;
-        repo.save(&pom).expect("saving active pomodoro");
-
-        pom.finished_at = now + 1;
-        repo.save(&pom).expect("saving finished pomodoro");
-
-        let entries = repo.today().expect("querying today");
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].finished_at, now + 1);
-    }
-
-    #[test]
-    fn today_multiple_kinds() {
-        use chrono::Local;
-
-        let repo = Repository::new("file::memory:");
-        let now = Local::now().timestamp();
-
-        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
-        pom.started_at = now;
-        repo.save(&pom).expect("saving pomodoro");
-        pom.finished_at = now + 1;
-        repo.save(&pom).expect("finishing pomodoro");
-
-        let mut brk = Schedulable::new(43, Kind::Break, 5);
-        brk.started_at = now + 2;
-        repo.save(&brk).expect("saving break");
-        brk.finished_at = now + 3;
-        repo.save(&brk).expect("finishing break");
-
-        let entries = repo.today().expect("querying today");
-        assert_eq!(entries.len(), 2);
-    }
-
     // --- save_annotation -------------------------------------------------------
 
     #[test]
