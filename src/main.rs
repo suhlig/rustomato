@@ -21,7 +21,7 @@ struct Opts {
     no_hooks: bool,
 
     #[clap(subcommand)]
-    subcmd: SubCommands,
+    subcmd: Option<SubCommands>,
 }
 
 #[derive(Parser)]
@@ -37,6 +37,8 @@ enum SubCommands {
     Show(ShowCommand),
     /// Generate a productivity report
     Report(ReportCommand),
+    /// Display the man page
+    Man(ManCommand),
     #[clap(hide = true)]
     Completions(CompletionsCommand),
 }
@@ -44,6 +46,10 @@ enum SubCommands {
 /// Initialize rustomato
 #[derive(Parser)]
 struct InitCommand {}
+
+/// Show the man page
+#[derive(Parser)]
+struct ManCommand {}
 
 /// Work with a Pomodoro
 #[derive(Parser)]
@@ -272,8 +278,24 @@ struct InterruptionsReport {
 fn main() {
     let opts = Opts::parse();
 
-    // The completions subcommand doesn't need a database, so handle it early
-    if let SubCommands::Completions(completions_options) = &opts.subcmd {
+    let subcmd = match opts.subcmd {
+        Some(s) => s,
+        None => {
+            // No subcommand given, show help
+            let mut cmd = Opts::command();
+            cmd.print_help().unwrap();
+            println!();
+            process::exit(0);
+        }
+    };
+
+    // The man and completions subcommands don't need a database, so handle them early.
+    if let SubCommands::Man(_) = &subcmd {
+        print!("{}", include_str!("../man/man1/rustomato.1"));
+        return;
+    }
+
+    if let SubCommands::Completions(completions_options) = &subcmd {
         let mut cmd = Opts::command();
         generate(
             completions_options.shell,
@@ -312,7 +334,7 @@ fn main() {
     }
 
     // Handle init early — no database needed.
-    if let SubCommands::Init(_) = &opts.subcmd {
+    if let SubCommands::Init(_) = &subcmd {
         match hooks::init(&root) {
             Ok(()) => {
                 println!(
@@ -348,7 +370,7 @@ fn main() {
     let scheduler = Scheduler::new(repo, root, verbose, opts.no_hooks);
     let pid = process::id();
 
-    match opts.subcmd {
+    match subcmd {
         SubCommands::Init(_) => unreachable!(), // handled above
         SubCommands::Pomodoro(pomodoro_options) => match pomodoro_options.subcmd {
             PomodoroCommands::Start(ref opts) => cmd_pomodoro_start(&scheduler, opts, pid, verbose),
@@ -404,6 +426,7 @@ fn main() {
                 );
             }
         },
+        SubCommands::Man(_) => unreachable!(),
         SubCommands::Completions(_) => unreachable!(),
     };
 }

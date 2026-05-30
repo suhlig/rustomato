@@ -1,0 +1,292 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH RUSTOMATO 1 "2026-05-30" "rustomato 1.2.0" "User Commands"
+.SH NAME
+rustomato \- A simple Pomodoro timer for the command line
+.SH SYNOPSIS
+\fBrustomato\fR [\fB\-\-verbose\fR] [\fB\-\-no-hooks\fR] [\fB\-\-version\fR] <\fIcommand\fR> [<\fIargs\fR>]
+.SH DESCRIPTION
+Rustomato is a command-line Pomodoro timer written in Rust. It manages
+pomodori and breaks as stateful sessions persisted in a local SQLite
+database, runs user-provided hooks at lifecycle transitions, and
+provides reports on productivity patterns.
+.SH OPTIONS
+.TP
+\fB\-\-verbose\fR
+Enable verbose output. Prints diagnostic information to stdout.
+.TP
+\fB\-\-no-hooks\fR
+Disable hook execution entirely.
+.TP
+\fB\-\-version\fR
+Print version information.
+.SH COMMANDS
+.SS "init"
+Initialize the rustomato root directory with sample hook scripts.
+.TP
+\fBrustomato init\fR
+Creates the \fIhooks/\fR subdirectory inside \fB$RUSTOMATO_ROOT\fR
+(or \fI~/.rustomato/hooks/\fR by default) with non-executable sample
+hook scripts for all 18 events. Make scripts executable with
+\fIchmod +x\fR to enable them.
+.SS "status"
+Show the currently active or most recently finished session.
+.TP
+\fBrustomato status\fR
+Prints the active pomodoro or break, or "Nothing active" if none.
+.SS "list"
+List recent pomodori and breaks.
+.TP
+\fBrustomato list\fR [\fB\-\-limit\fR \fIN\fR] [\fB\-\-no-header\fR]
+Show a table of recent entries with truncated UUID, kind, start time,
+and timeline. Default limit is 10. Use \fB\-\-no-header\fR for
+scripting-friendly output.
+.SS "show"
+Show detailed information about a specific session.
+.TP
+\fBrustomato show\fR <\fIuuid\fR>
+Display full details for a session identified by UUID prefix, negative
+index (\fB-1\fR through \fB-9\fR for recent finished pomodori), or
+timestamp (\fBHH:MM\fR or RFC 3339). Shows annotations and interrupts.
+.SS "pomodoro start"
+Start a new pomodoro.
+.TP
+\fBrustomato pomodoro start\fR [\fB\-\-duration\fR \fIMIN\fR] [\fB\-\-force\fR]
+Start a pomodoro with the given duration (default: 25 minutes).
+.ti +4
+The process blocks until the timer expires or Ctrl-C is pressed.
+.ti +4
+If \fB\-\-force\fR is given, any currently active session is
+force-cancelled (break) or force-finished (pomodoro) before starting.
+.SS "pomodoro interrupt"
+Record an interruption on the active or most recently finished pomodoro.
+.TP
+\fBrustomato pomodoro interrupt\fR [\fB\-\-kind\fR \fIKIND\fR]
+Increment the interruption counter. \fIKIND\fR is \fBinternal\fR
+(default) or \fBexternal\fR. The pomodoro continues running.
+If a break is active, the interrupt is recorded on the most recently
+finished pomodoro instead.
+.SS "pomodoro annotate"
+Add an annotation to a session.
+.TP
+\fBrustomato pomodoro annotate\fR [\fB\-\-target\fR \fITARGET\fR] [\fITEXT\fR...]
+Attach annotation text to the active session, or to a specific session
+using \fB\-\-target\fR. Text can be provided as arguments or read from
+stdin if omitted.
+.SS "pomodoro log"
+Log an externally completed pomodoro.
+.TP
+\fBrustomato pomodoro log\fR [\fB\-\-started-at\fR \fITS\fR] [\fB\-\-finished-at\fR \fITS\fR] [\fB\-\-duration\fR \fIMIN\fR]
+Record a pomodoro that was completed outside of rustomato (e.g. using
+a physical timer). Timestamps are in RFC 3339 / ISO 8601 format.
+At least one of \fB\-\-started-at\fR or \fB\-\-finished-at\fR is
+required. If only one is given, \fB\-\-duration\fR (default: 25) is
+used to compute the other.
+.SS "pomodoro cancel"
+Cancel the currently active pomodoro.
+.TP
+\fBrustomato pomodoro cancel\fR
+Cancel the active pomodoro and record its cancelled state in the
+database.
+.SS "break start"
+Start a break.
+.TP
+\fBrustomato break start\fR [\fB\-\-duration\fR \fIMIN\fR] [\fB\-\-force\fR]
+Start a break. If \fB\-\-duration\fR is omitted, the duration is
+auto-calculated based on consecutive finished pomodori:
+0-3 pomodori = 5 minutes, 4/8/12... = 15 minutes (long break).
+.ti +4
+If \fB\-\-force\fR is given, any currently active session is closed
+first. Ctrl-C finishes a break rather than cancelling it.
+.SS "break annotate"
+Add an annotation to a break.
+.TP
+\fBrustomato break annotate\fR [\fB\-\-target\fR \fITARGET\fR] [\fITEXT\fR...]
+Same as \fBpomodoro annotate\fR but scoped to breaks.
+.SS "break cancel"
+Cancel the currently active break.
+.TP
+\fBrustomato break cancel\fR
+Cancel the active break.
+.SS "report day"
+Daily productivity report.
+.TP
+\fBrustomato report day\fR [\fB\-\-date\fR \fIYYYY-MM-DD\fR]
+Show a summary of pomodori and breaks for the given date (default: today).
+.SS "report week"
+Weekly productivity report.
+.TP
+\fBrustomato report week\fR [\fB\-\-date\fR \fIYYYY-MM-DD\fR]
+Show a weekly summary for the week containing the given date (default: today).
+.SS "report month"
+Monthly productivity report with week-by-week breakdown.
+.TP
+\fBrustomato report month\fR [\fB\-\-date\fR \fIYYYY-MM|YYYY-MM-DD\fR] [\fB\-\-months\fR \fIN\fR]
+Show a multi-month report with week-by-week breakdown for each month.
+\fB\-\-months\fR defaults to 3 (shows the current month plus 2 previous).
+.SS "report last"
+Rolling window report for the last N days.
+.TP
+\fBrustomato report last\fR [\fB\-\-date\fR \fIYYYY-MM-DD\fR] [\fB\-\-days\fR \fIN\fR]
+Show a report for the last N days ending on the given date (default: today, 7 days).
+.SS "report interruptions"
+Interruption pattern analysis.
+.TP
+\fBrustomato report interruptions\fR [\fB\-\-date\fR \fIYYYY-MM-DD\fR] [\fB\-\-days\fR \fIN\fR]
+Analyse interruption patterns by hour of day and day of week for the
+last N days (default: 7).
+.SS "completions"
+Generate shell completions.
+.TP
+\fBrustomato completions\fR <\fISHELL\fR>
+Generate shell completion scripts for \fIbash\fR, \fIzsh\fR,
+\fIfish\fR, \fIpowershell\fR, or \fIelvish\fR. Output is written to
+stdout.
+.SH BREAK DURATION AUTO-CALCULATION
+Following the classic Pomodoro Technique (Cirillo), \fBbreak start\fR
+without \fB\-\-duration\fR automatically picks a duration based on
+how many pomodori have been finished consecutively:
+.PP
+.RS
+.TS
+tab(;) box;
+c s
+l l.
+Pomodori since last reset;Break duration
+0-3;5 min (short break)
+4, 8, 12, ...;15 min (long break)
+.TE
+.RE
+.PP
+The counter resets after a long break (duration >= 10) or at midnight.
+Short breaks (duration < 10) do not reset the counter. Only finished
+pomodori count toward the total; cancelled and stale entries are ignored.
+.SH STATE TRANSITIONS
+.TS
+box;
+cb cb
+l l.
+State;Description
+New;Not yet started
+Active;Timer is running
+Finished;Timer expired normally
+Cancelled;Cancelled by user (pomodoro only)
+Stale;Process died without cleanup
+.TE
+.SS "Differences between pomodoro and break"
+A pomodoro can be interrupted (counter incremented, keeps running) or
+cancelled via Ctrl-C. A break cannot be interrupted; Ctrl-C finishes
+it rather than cancelling it.
+.SH HOOKS
+Rustomato can execute user-provided scripts at lifecycle transitions.
+Hooks live in \fB$RUSTOMATO_ROOT/hooks/\fR and are looked up by
+filename.
+.SS "Hook events"
+.TS
+box;
+cb cb
+l l.
+Event;Aborts operation?
+BeforeStartPomodoro, BeforeStartBreak;yes
+BeforeFinishPomodoro, BeforeFinishBreak;yes
+BeforeCancelPomodoro;yes
+BeforeInterruptPomodoro;yes
+BeforeLogPomodoro;yes
+BeforeAnnotatePomodoro, BeforeAnnotateBreak;yes
+After-* (all above);no
+.TE
+.SS "Hook execution"
+.IP \(bu 2
+Hook path: \fB$RUSTOMATO_ROOT/hooks/<event-filename>\fR
+.IP \(bu 2
+If the file does not exist or is not executable, it is silently skipped
+(shown in \fB\-\-verbose\fR mode).
+.IP \(bu 2
+If \fB\-\-no-hooks\fR was passed, all hooks are skipped.
+.IP \(bu 2
+The hook is spawned via \fBexecve\fR. The parent polls \fBtry_wait()\fR
+every 50ms until the hook exits or the timeout is reached.
+.IP \(bu 2
+On timeout: \fBSIGKILL\fR is sent, then \fBwait()\fR to reap.
+.IP \(bu 2
+Non-zero exit from a before-* hook aborts the operation.
+.SS "Timeout"
+Default: 3 seconds. Configurable via \fBRUSTOMATO_HOOK_TIMEOUT\fR
+environment variable (value in milliseconds).
+.SS "Hook environment variables"
+.TS
+box;
+lb l
+l l.
+Variable;Description
+RUSTOMATO_ROOT;Data directory path
+RUSTOMATO_HOOK;Hook name (e.g. before-start-pomodoro)
+RUSTOMATO_KIND;pomodoro or break
+RUSTOMATO_UUID;Session UUID
+RUSTOMATO_DURATION;Duration in minutes
+RUSTOMATO_STARTED_AT;Unix timestamp of start
+RUSTOMATO_FINISHED_AT;Unix timestamp (after-* only)
+RUSTOMATO_CANCELLED_AT;Unix timestamp (after-* only)
+RUSTOMATO_INTERRUPT_KIND;Internal or external (interrupt hooks)
+RUSTOMATO_INTERRUPTIONS;Total interruption count
+RUSTOMATO_ANNOTATION;Annotation body (annotate hooks)
+.TE
+.SS "Hook examples"
+Create an executable script at
+\fB$RUSTOMATO_ROOT/hooks/after-finish-pomodoro\fR:
+.PP
+.nf
+.RS
+#!/usr/bin/env bash
+terminal-notifier -message "Pomodoro over" -title rustomato
+exit 0
+.RE
+.fi
+.PP
+Prevent pomodori after 10 PM (\fBbefore-start-pomodoro\fR):
+.PP
+.nf
+.RS
+#!/usr/bin/env bash
+if [ "$(date +%H)" -ge 22 ]; then
+  echo "No pomodori after 10 PM!"
+  exit 1
+fi
+exit 0
+.RE
+.fi
+.SH ENVIRONMENT VARIABLES
+.TP
+\fBRUSTOMATO_ROOT\fR
+Data directory for the rustomato database and hooks.
+Default: \fI~/.rustomato\fR.
+.TP
+\fBRUSTOMATO_DATABASE_URL\fR
+SQLite database URL. If not set, the database is located at
+\fB$RUSTOMATO_ROOT/data.db\fR. Default: \fI$RUSTOMATO_ROOT/data.db\fR.
+.TP
+\fBRUSTOMATO_HOOK_TIMEOUT\fR
+Hook timeout in milliseconds. Default: 3000 (3 seconds).
+.SH EXIT CODES
+.TS
+box;
+cb cb
+l l.
+Exit code;Meaning
+0;Success (for pomodoro: finished)
+1;Error or cancelled (pomodoro Ctrl-C'd)
+.TE
+.SH FILES
+.TP
+\fI~/.rustomato/data.db\fR
+Default SQLite database.
+.TP
+\fI~/.rustomato/hooks/\fR
+User-provided hook scripts.
+.SH SEE ALSO
+.IR skim (1),
+.IR pomodoro (1)
+.PP
+Project repository: \fIhttps://github.com/suhlig/rustomato\fR
+.SH AUTHOR
+Steffen Uhlig <steffen@familie-uhlig.net>

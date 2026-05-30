@@ -15,7 +15,7 @@ mod acceptance_tests {
     #[test]
     fn plain() {
         let mut cmd = Command::cargo_bin("rustomato").unwrap();
-        cmd.assert().code(2);
+        cmd.assert().success();
     }
 
     #[test]

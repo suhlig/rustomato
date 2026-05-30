@@ -268,7 +268,7 @@ exit 0
 brew install suhlig/tap/rustomato
 ```
 
-This formula automatically installs shell completions for bash, zsh, and fish.
+This formula automatically installs shell completions for bash, zsh, and fish, as well as the man page.
 
 ## Manual
 
@@ -285,6 +285,31 @@ This formula automatically installs shell completions for bash, zsh, and fish.
 ```sh
 arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && curl -sL "https://github.com/suhlig/rustomato/releases/latest/download/rustomato-linux-${arch}.tar.gz" | tar xz && sudo mv rustomato /usr/local/bin
 ```
+
+## Man page
+
+Rustomato ships a man page that you can view in several ways:
+
+**From the binary** (no installation needed):
+
+```sh
+rustomato man | man --local-file -
+```
+
+Or with `--help` output directed to a pager:
+
+```sh
+rustomato man | less
+```
+
+**Install system-wide** (Linux/macOS):
+
+```sh
+rustomato man > /usr/local/share/man/man1/rustomato.1
+mandb  # on Linux only
+```
+
+**With Homebrew**: the man page is installed automatically and is available via `man rustomato`.
 
 # Releasing
 
@@ -321,8 +346,6 @@ cargo release patch
 
 # TODO
 
-* Provide man page and install it when homebrew is available (see [skim](https://github.com/skim-rs/skim) for an example)
 * Show progress bar only when attached to a terminal
-  - Should we make this a full TUI using Ratatui? Where does it end?
   - Also need to react to SIGWINCH to resize the progress bar
 * Does a CSV export of pomodori and breaks make sense for externally created reports?
