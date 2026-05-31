@@ -1,7 +1,6 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
 use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
-use chrono::{Datelike, TimeZone};
 use pbr::ProgressBar;
 use std::fmt;
 use std::path::PathBuf;
@@ -380,17 +379,7 @@ impl Scheduler {
                 });
         }
 
-        // HH:MM timestamp — interpret as today at that time
-        if let Ok(ts) = parse_hhmm(raw)
-            && let Some(s) = self
-                .repo
-                .find_by_timestamp(ts)
-                .map_err(|_| SchedulingError::ExecutionError)?
-        {
-            return Ok(s);
-        }
-
-        // RFC 3339 / ISO 8601 timestamp
+        // Timestamp (HH:MM, RFC 3339, ISO 8601, or Unix timestamp)
         if let Ok(ts) = super::parse_timestamp(raw)
             && let Some(s) = self
                 .repo
@@ -608,33 +597,4 @@ fn parse_negative_index(raw: &str) -> Option<u32> {
         }
     }
     None
-}
-
-/// Parse a time string in `HH:MM` (24-hour) format and return a Unix timestamp
-/// for that time on the current local date.
-fn parse_hhmm(raw: &str) -> Result<i64, String> {
-    let parts: Vec<&str> = raw.split(':').collect();
-    if parts.len() != 2 {
-        return Err(format!("not a valid HH:MM time: '{}'", raw));
-    }
-    let hours: u32 = parts[0]
-        .parse()
-        .map_err(|_| format!("not a valid HH:MM time: '{}'", raw))?;
-    let minutes: u32 = parts[1]
-        .parse()
-        .map_err(|_| format!("not a valid HH:MM time: '{}'", raw))?;
-
-    if hours > 23 || minutes > 59 {
-        return Err(format!("time out of range: '{}'", raw));
-    }
-
-    let now = chrono::Local::now();
-    let naive = chrono::NaiveDate::from_ymd_opt(now.year(), now.month(), now.day())
-        .and_then(|d| d.and_hms_opt(hours, minutes, 0))
-        .ok_or_else(|| format!("invalid date/time for '{}'", raw))?;
-    let local = chrono::Local
-        .from_local_datetime(&naive)
-        .single()
-        .ok_or_else(|| format!("ambiguous local time for '{}'", raw))?;
-    Ok(local.timestamp())
 }

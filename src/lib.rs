@@ -277,6 +277,8 @@ impl fmt::Display for Schedulable {
 /// Accepts:
 /// - RFC 3339 / ISO 8601 with timezone offset (e.g. `2026-05-29T14:30:00Z` or `2026-05-29T14:30:00+02:00`)
 /// - ISO 8601 without timezone (interpreted as local time)
+/// - `HH:MM` 24-hour clock — interpreted as today at that time, or yesterday
+///   if that time is in the future (we never apply actions in the future)
 /// - A bare integer interpreted as a Unix timestamp
 pub fn parse_timestamp(s: &str) -> Result<i64, String> {
     use chrono::Local;
@@ -304,15 +306,62 @@ pub fn parse_timestamp(s: &str) -> Result<i64, String> {
         return Ok(local.timestamp());
     }
 
+    // HH:MM — today at that time, or yesterday if that time is in the future
+    if let Some(ts) = parse_hhmm_local(s) {
+        return Ok(ts);
+    }
+
     // Unix timestamp (bare integer)
     if let Ok(ts) = s.parse::<i64>() {
         return Ok(ts);
     }
 
     Err(format!(
-        "cannot parse '{}' as a timestamp; expected RFC 3339 (e.g. 2026-05-29T14:30:00Z) or Unix timestamp",
+        "cannot parse '{}' as a timestamp; expected RFC 3339 (e.g. 2026-05-29T14:30:00Z), HH:MM, or Unix timestamp",
         s
     ))
+}
+
+/// Parse an `HH:MM` string into a Unix timestamp in local time.
+///
+/// Returns the timestamp for that time **today** if it's not in the future,
+/// or **yesterday** if the wall-clock time has already passed today.
+/// This enforces the rule that we never apply actions about the future.
+fn parse_hhmm_local(s: &str) -> Option<i64> {
+    use chrono::{Local, TimeZone};
+
+    let (hours, minutes) = s.split_once(':').and_then(|(h, m)| {
+        let h: u32 = h.parse().ok()?;
+        let m: u32 = m.parse().ok()?;
+        if h <= 23 && m <= 59 {
+            Some((h, m))
+        } else {
+            None
+        }
+    })?;
+
+    let now = Local::now();
+    let today = now.date_naive();
+
+    // Timestamp for today at HH:MM
+    let today_naive = today.and_hms_opt(hours, minutes, 0)?;
+    let today_ts = Local
+        .from_local_datetime(&today_naive)
+        .earliest()?
+        .timestamp();
+
+    if today_ts <= now.timestamp() {
+        // Today at that time is in the past or right now — use today
+        Some(today_ts)
+    } else {
+        // Future — use yesterday instead
+        let yesterday = today - chrono::Duration::days(1);
+        let yesterday_naive = yesterday.and_hms_opt(hours, minutes, 0)?;
+        Local
+            .from_local_datetime(&yesterday_naive)
+            .earliest()
+            .map(|dt| dt.timestamp())
+    }
 }
 
 /// Given a list of UUIDs, find the shortest prefix length (minimum 6) that makes

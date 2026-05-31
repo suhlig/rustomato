@@ -109,11 +109,11 @@ struct InterruptPomodoro {
 /// Log an externally completed pomodoro
 #[derive(Parser)]
 struct LogPomodoro {
-    /// When the pomodoro started (RFC 3339 / ISO 8601)
+    /// When the pomodoro started (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
     #[clap(long, value_name = "TIMESTAMP")]
     started_at: Option<String>,
 
-    /// When the pomodoro finished (RFC 3339 / ISO 8601)
+    /// When the pomodoro finished (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
     #[clap(long, value_name = "TIMESTAMP")]
     finished_at: Option<String>,
 

@@ -370,6 +370,20 @@ change the exit code or the DB state.
 The error mentions `--force` so users know the flag exists to override the
 check.
 
+### No future timestamps
+
+We never apply any action about the future. When a bare `HH:MM` is given
+as a timestamp, it is interpreted as **today at that time** if it is in the
+past or right now, or **yesterday at that time** if the wall-clock time is
+in the future. This avoids silently creating entries with timestamps in the
+future.
+
+`HH:MM` parsing is built into the single unified `parse_timestamp` function
+in `lib.rs`, alongside RFC 3339 / ISO 8601 and bare Unix integers. Every
+argument that accepts a timestamp (`--started-at`, `--finished-at`, `--target`,
+the positional argument in `show`) uses the same function, ensuring
+consistent behavior across the CLI.
+
 # Meta
 
 * Interview me about important decisions.
