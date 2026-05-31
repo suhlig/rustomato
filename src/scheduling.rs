@@ -600,6 +600,28 @@ impl Scheduler {
     }
 }
 
+/// Hides the terminal cursor while alive; restores it on drop.
+struct CursorGuard;
+
+impl CursorGuard {
+    fn hide() -> Option<Self> {
+        if std::io::stderr().is_terminal() {
+            use std::io::Write;
+            let _ = write!(std::io::stderr(), "\x1b[?25l");
+            Some(CursorGuard)
+        } else {
+            None
+        }
+    }
+}
+
+impl Drop for CursorGuard {
+    fn drop(&mut self) {
+        use std::io::Write;
+        let _ = write!(std::io::stderr(), "\x1b[?25h");
+    }
+}
+
 fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
     init_ctrlc_handler();
     let (result_tx, result_rx) = channel::<bool>();
@@ -622,6 +644,7 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
 
     thread::spawn({
         move || {
+            let _cursor = CursorGuard::hide();
             let total = Duration::new((60 * duration) as u64, 0);
             let start = Instant::now();
 
