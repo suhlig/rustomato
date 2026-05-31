@@ -467,6 +467,37 @@ mod hooks_integration {
     }
 
     #[test]
+    fn break_annotate_with_active_pomodoro_finds_finished_break() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // Create a finished break
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 1000;
+        let brk = sched.repo().save(&brk).expect("saving active break");
+        let mut brk = sched.repo().find_by_uuid(brk.uuid).unwrap();
+        brk.finished_at = 2000;
+        let brk = sched.repo().save(&brk).expect("finishing break");
+
+        // Now create an active pomodoro (most recent active is a pomodoro)
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 3000;
+        sched.repo().save(&pom).expect("saving active pomodoro");
+
+        // This simulates `break annotate my note` via the CLI path — uses
+        // annotate_for_kind to prefer breaks over the active pomodoro
+        let annotation = sched.annotate_for_kind("break note", Kind::Break).unwrap();
+        assert_eq!(annotation.body, "break note");
+
+        // Annotation should be on the finished break, not the active pomodoro
+        assert_eq!(
+            annotation.schedulable_uuid.to_string(),
+            brk.uuid.to_string(),
+            "break annotate should annotate the finished break, not the active pomodoro"
+        );
+    }
+
+    #[test]
     fn annotate_nothing_available_returns_error() {
         let dir = tempdir().unwrap();
         let sched = scheduler(dir.path());

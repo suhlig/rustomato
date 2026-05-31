@@ -246,6 +246,23 @@ impl Repository {
         }
     }
 
+    /// Find the most recently finished break across all time.
+    pub fn most_recently_finished_break(&self) -> Result<Option<Schedulable>, PersistenceError> {
+        match self.db.query_row(
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             WHERE kind = 'break' AND finished_at != 0 \
+             ORDER BY finished_at DESC \
+             LIMIT 1",
+            [],
+            row_to_schedulable,
+        ) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
     /// Find a schedulable by abbreviated UUID prefix.
     /// Returns an error if the prefix matches zero or more than one row.
     pub fn find_by_uuid_prefix(&self, prefix: &str) -> Result<Schedulable, PersistenceError> {

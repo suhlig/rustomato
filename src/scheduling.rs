@@ -313,6 +313,37 @@ impl Scheduler {
         self.save_annotation_for(&target, text)
     }
 
+    /// Annotate a schedulable of the given kind. If active and matches kind,
+    /// annotates it; otherwise falls back to the most recently finished of that kind.
+    pub fn annotate_for_kind(&self, text: &str, kind: Kind) -> Result<Annotation, SchedulingError> {
+        let active = self
+            .repo
+            .active()
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        let target = match active {
+            Some(s) if s.kind == kind => s,
+            _ => {
+                // Active is a different kind or nothing active —
+                // find most recently finished of the desired kind
+                match kind {
+                    Kind::Pomodoro => self
+                        .repo
+                        .most_recently_finished_pomodoro()
+                        .map_err(|_| SchedulingError::ExecutionError)?
+                        .ok_or(SchedulingError::NothingToAnnotate)?,
+                    Kind::Break => self
+                        .repo
+                        .most_recently_finished_break()
+                        .map_err(|_| SchedulingError::ExecutionError)?
+                        .ok_or(SchedulingError::NothingToAnnotate)?,
+                }
+            }
+        };
+
+        self.save_annotation_for(&target, text)
+    }
+
     /// Resolve a `--target` specifier to a `Schedulable`, then annotate it.
     ///
     /// Accepts:

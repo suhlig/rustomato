@@ -388,9 +388,13 @@ fn main() {
                 cmd_pomodoro_interrupt(&scheduler, opts, verbose)
             }
             PomodoroCommands::Log(ref opts) => cmd_pomodoro_log(&scheduler, opts, verbose),
-            PomodoroCommands::Annotate(ref opts) => {
-                cmd_annotate(&scheduler, &opts.words, opts.target.as_deref(), verbose)
-            }
+            PomodoroCommands::Annotate(ref opts) => cmd_annotate(
+                &scheduler,
+                &opts.words,
+                opts.target.as_deref(),
+                Some(Kind::Pomodoro),
+                verbose,
+            ),
             PomodoroCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
         SubCommands::Status(_) => cmd_status(&db_url),
@@ -398,9 +402,13 @@ fn main() {
         SubCommands::Show(ref opts) => cmd_show(&db_url, opts),
         SubCommands::Break(break_options) => match break_options.subcmd {
             BreakCommands::Start(ref opts) => cmd_break_start(&scheduler, opts, pid, verbose),
-            BreakCommands::Annotate(ref opts) => {
-                cmd_annotate(&scheduler, &opts.words, opts.target.as_deref(), verbose)
-            }
+            BreakCommands::Annotate(ref opts) => cmd_annotate(
+                &scheduler,
+                &opts.words,
+                opts.target.as_deref(),
+                Some(Kind::Break),
+                verbose,
+            ),
             BreakCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
         },
         SubCommands::Report(report_options) => match report_options.subcmd {
@@ -567,7 +575,13 @@ fn cmd_pomodoro_log(scheduler: &Scheduler, opts: &LogPomodoro, verbose: bool) {
     }
 }
 
-fn cmd_annotate(scheduler: &Scheduler, words: &[String], target: Option<&str>, verbose: bool) {
+fn cmd_annotate(
+    scheduler: &Scheduler,
+    words: &[String],
+    target: Option<&str>,
+    kind: Option<Kind>,
+    verbose: bool,
+) {
     // If no explicit --target, check if the first word is a negative-index
     // shorthand (-1..=-9) and use it as the target.
     let (resolved_target, words_for_text): (Option<String>, &[String]) =
@@ -599,7 +613,10 @@ fn cmd_annotate(scheduler: &Scheduler, words: &[String], target: Option<&str>, v
     }
     let result = match resolved_target.as_deref() {
         Some(t) => scheduler.annotate_target(&text, t),
-        None => scheduler.annotate(&text),
+        None => match kind {
+            Some(k) => scheduler.annotate_for_kind(&text, k),
+            None => scheduler.annotate(&text),
+        },
     };
     match result {
         Ok(annotation) => {
