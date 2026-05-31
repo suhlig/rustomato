@@ -100,6 +100,7 @@ rustomato show 0                              # details of the active entry
 rustomato show -1                              # details of the most recent entry (any kind)
 rustomato break annotate -1 "good break"      # most recently started break
 rustomato pomodoro interrupt -1               # record interrupt on most recent pomodoro
+```
 
 # Interrupts
 
