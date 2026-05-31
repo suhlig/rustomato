@@ -204,6 +204,51 @@ impl Scheduler {
         Ok(updated)
     }
 
+    /// Record an interruption on a specific target (resolved via `--target`).
+    pub fn interrupt_target(
+        &self,
+        kind: InterruptionKind,
+        raw_target: &str,
+    ) -> Result<Schedulable, SchedulingError> {
+        let target = self.resolve_target(raw_target)?;
+
+        if target.kind != Kind::Pomodoro {
+            return Err(SchedulingError::CannotResolveTarget(format!(
+                "'{}' is a break; interruptions can only be recorded on pomodori",
+                raw_target
+            )));
+        }
+
+        // Run before-interrupt hook
+        self.run_hook_with(HookEvent::BeforeInterruptPomodoro, &target, |ctx| {
+            ctx.interrupt_kind = Some(kind.as_str().to_string());
+        })?;
+
+        // Increment the counter
+        let updated = self
+            .repo
+            .record_interrupt(target.uuid)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        // Save to interrupt log
+        let interrupt_log = InterruptLog {
+            uuid: SqlUuid::default(),
+            schedulable_uuid: target.uuid,
+            kind,
+            created_at: now(),
+        };
+        self.repo
+            .save_interrupt(&interrupt_log)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        // Run after-interrupt hook
+        self.run_hook_after_with(HookEvent::AfterInterruptPomodoro, &updated, |ctx| {
+            ctx.interrupt_kind = Some(kind.as_str().to_string());
+        });
+
+        Ok(updated)
+    }
+
     /// Close out a schedulable — cancel pomodoro, finish break.
     /// Runs before/after hooks and persists.
     fn close_out(&self, schedulable: &mut Schedulable) -> Result<(), SchedulingError> {

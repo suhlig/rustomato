@@ -96,6 +96,10 @@ struct InterruptPomodoro {
     /// Whether the interruption is internal (self-inflicted) or external (environmental)
     #[clap(short, long, default_value = "internal", value_name = "KIND")]
     kind: String,
+
+    /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
 }
 
 /// Log an externally completed pomodoro
@@ -468,7 +472,11 @@ fn cmd_pomodoro_interrupt(scheduler: &Scheduler, opts: &InterruptPomodoro, verbo
             process::exit(1);
         }
     };
-    match scheduler.interrupt(kind) {
+    let result = match opts.target.as_deref() {
+        Some(t) => scheduler.interrupt_target(kind, t),
+        None => scheduler.interrupt(kind),
+    };
+    match result {
         Ok(interrupted) => {
             if verbose {
                 println!("{}", interrupted);

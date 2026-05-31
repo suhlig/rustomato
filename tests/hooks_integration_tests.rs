@@ -382,6 +382,54 @@ mod hooks_integration {
         assert_eq!(trimmed, "external:1");
     }
 
+    // --- interrupt_target (--target) ----------------------------------------
+
+    #[test]
+    fn interrupt_target_resolves_and_increments_counter() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // Create and finish a pomodoro
+        let mut pom = Schedulable::new(42, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        sched.repo().save(&pom).expect("saving pomodoro");
+        pom.finished_at = 2000;
+        let pom = sched.repo().save(&pom).expect("finishing pomodoro");
+
+        // Record an interruption targeting it by UUID
+        let result = sched.interrupt_target(InterruptionKind::Internal, &pom.uuid.to_string());
+        assert!(result.is_ok());
+
+        let updated = sched.repo().find_by_uuid(pom.uuid).expect("finding");
+        assert_eq!(updated.interruptions, 1);
+    }
+
+    #[test]
+    fn interrupt_target_nonexistent_returns_error() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // No data at all
+        let result = sched.interrupt_target(InterruptionKind::Internal, "00000000");
+        assert_matches!(result, Err(SchedulingError::CannotResolveTarget(_)));
+    }
+
+    #[test]
+    fn interrupt_target_break_returns_error() {
+        let dir = tempdir().unwrap();
+        let sched = scheduler(dir.path());
+
+        // Create and finish a break
+        let mut brk = Schedulable::new(43, Kind::Break, 5);
+        brk.started_at = 1000;
+        sched.repo().save(&brk).expect("saving break");
+        brk.finished_at = 2000;
+        let brk = sched.repo().save(&brk).expect("finishing break");
+
+        let result = sched.interrupt_target(InterruptionKind::Internal, &brk.uuid.to_string());
+        assert_matches!(result, Err(SchedulingError::CannotResolveTarget(_)));
+    }
+
     // --- annotate -----------------------------------------------------------
 
     #[test]
