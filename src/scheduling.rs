@@ -3,6 +3,7 @@ use super::persistence::{PersistenceError, Repository};
 use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
 use pbr::ProgressBar;
 use std::fmt;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -603,14 +604,16 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
     init_ctrlc_handler();
     let (result_tx, result_rx) = channel::<bool>();
 
-    // TODO Only if attached to a terminal
-    let mut pb = ProgressBar::new((60 * duration) as u64);
-
-    pb.show_speed = false;
-    pb.show_counter = false;
-    pb.show_time_left = false;
-    pb.show_tick = false;
-    pb.show_percent = false;
+    // Show the progress bar only when attached to a terminal (stderr)
+    let mut pb = std::io::stderr().is_terminal().then(|| {
+        let mut bar = ProgressBar::new((60 * duration) as u64);
+        bar.show_speed = false;
+        bar.show_counter = false;
+        bar.show_time_left = false;
+        bar.show_tick = false;
+        bar.show_percent = false;
+        bar
+    });
 
     thread::spawn({
         move || {
@@ -630,11 +633,17 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
                 let rm = remaining.as_secs() / 60;
                 let rs = remaining.as_secs() % 60;
 
-                pb.message(&format!(
-                    "{}  {:02}:{:02} / {:02}:{:02} ",
-                    kind, em, es, rm, rs,
-                ));
-                pb.set(elapsed.as_secs());
+                if let Some(ref mut pb) = pb {
+                    let label = match kind {
+                        Kind::Pomodoro => "Pomodoro",
+                        Kind::Break => "Break",
+                    };
+                    pb.message(&format!(
+                        "{}  {:02}:{:02} / {:02}:{:02} ",
+                        label, em, es, rm, rs,
+                    ));
+                    pb.set(elapsed.as_secs());
+                }
 
                 if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
                     let _ = result_tx.send(true);
