@@ -2,10 +2,7 @@
 
 ## Overview
 
-Rustomato is a command-line Pomodoro timer written in Rust. It manages
-pomodori and breaks as stateful **schedulables** persisted in a local
-SQLite database, runs user-provided **hooks** at lifecycle transitions,
-and provides reports on productivity patterns.
+Rustomato is a command-line Pomodoro timer written in Rust. It manages pomodori and breaks as stateful **schedulables** persisted in a local SQLite database, runs user-provided **hooks** at lifecycle transitions, and provides reports on productivity patterns.
 
 ---
 
@@ -53,8 +50,7 @@ stateDiagram-v2
     Stale --> [*]
 ```
 
-`Status` is computed on the fly from the timestamp fields and PID liveness
-(`pid_is_alive`). It is never stored.
+`Status` is computed on the fly from the timestamp fields and PID liveness (`pid_is_alive`). It is never stored.
 
 ### `Kind`
 
@@ -69,8 +65,7 @@ stateDiagram-v2
 
 ### Database
 
-SQLite via `rusqlite`. Location defaults to `$RUSTOMATO_ROOT/data.db`, or
-overridden via `RUSTOMATO_DATABASE_URL`.
+SQLite via `rusqlite`. Location defaults to `$RUSTOMATO_ROOT/data.db`, or overridden via `RUSTOMATO_DATABASE_URL`.
 
 ### Key invariants (enforced by SQLite triggers & unique index)
 
@@ -91,10 +86,7 @@ overridden via `RUSTOMATO_DATABASE_URL`.
 
 ### Migrations
 
-Named `V1__...` through `V7__...` in `migrations/`. Applied automatically
-on startup in order. Each runs in a transaction and is recorded in the
-`_migrations` table. Foreign keys are temporarily disabled during migration
-(to allow V6's table rebuild), then re-enabled.
+Named `V1__...` through `V7__...` in `migrations/`. Applied automatically on startup in order. Each runs in a transaction and is recorded in the `_migrations` table. Foreign keys are temporarily disabled during migration (to allow V6's table rebuild), then re-enabled.
 
 ### Repository pattern
 
@@ -120,9 +112,7 @@ on startup in order. Each runs in a transaction and is recorded in the
 
 ## Break Duration Auto-Calculation
 
-Following the classic Pomodoro Technique (Cirillo), `break start` without an
-`--duration` flag automatically picks a duration based on how many pomodori
-have been finished consecutively:
+Following the classic Pomodoro Technique (Cirillo), `break start` without an `--duration` flag automatically picks a duration based on how many pomodori have been finished consecutively:
 
 | Pomodori since last reset | Break duration |
 |---|---|
@@ -134,14 +124,11 @@ The counter resets in two situations:
    considered a long break and resets the consecutive pomodoro count.
 2. **At midnight** — each day starts with a fresh count.
 
-Short breaks (`duration < 10`) do **not** reset the counter — they extend
-the current pomodoro set.
+Short breaks (`duration < 10`) do **not** reset the counter — they extend the current pomodoro set.
 
-Only **finished** pomodori (`finished_at != 0`) count toward the total;
-cancelled and stale pomodori are ignored.
+Only **finished** pomodori (`finished_at != 0`) count toward the total; cancelled and stale pomodori are ignored.
 
-When the user passes `--duration` explicitly, it overrides auto-calculation
-entirely. A message is printed to stderr when a long break is auto-selected:
+When the user passes `--duration` explicitly, it overrides auto-calculation entirely. A message is printed to stderr when a long break is auto-selected:
 
 ```
 Using 15-minute long break after 4 pomodori
@@ -179,9 +166,7 @@ Using 15-minute long break after 4 pomodori
 
 ### Ctrl-C handling
 
-A single `ctrlc` handler is installed once (via `Once`) for the process
-lifetime. It sets an `AtomicBool` which the timer thread polls. This avoids
-re-registering handlers and keeps the signal-safe code minimal.
+A single `ctrlc` handler is installed once (via `Once`) for the process lifetime. It sets an `AtomicBool` which the timer thread polls. This avoids re-registering handlers and keeps the signal-safe code minimal.
 
 ### `--force` flag
 
@@ -192,8 +177,7 @@ Present on both `pomodoro start` and `break start`. When used:
 3. The hooks for that close-out are run.
 4. A new schedulable starts normally.
 
-This addresses the stale-PID problem: if the process died without cleaning
-up, `--force` clears the stale entry so a new one can be created.
+This addresses the stale-PID problem: if the process died without cleaning up, `--force` clears the stale entry so a new one can be created.
 
 ---
 
@@ -239,9 +223,7 @@ Constructed from a `Schedulable` plus optional fields (`interrupt_kind`,
 
 ### `init` command
 
-Creates sample non-executable hook scripts for all events. They exit 0.
-The user must `chmod +x` hooks they want to enable — this prevents accidental
-activation and keeps noise low.
+Creates sample non-executable hook scripts for all events. They exit 0. The user must `chmod +x` hooks they want to enable — this prevents accidental activation and keeps noise low.
 
 ---
 
@@ -297,8 +279,7 @@ rustomato
 5. `--force` resolves stale entries by killing the process (if alive) and
    closing out the DB row before starting a new one.
 
-`pid_is_alive` uses POSIX `kill(pid, 0)` (cross-platform on Unix).
-`kill_process` sends SIGTERM, waits 500ms, then SIGKILL if still alive.
+`pid_is_alive` uses POSIX `kill(pid, 0)` (cross-platform on Unix). `kill_process` sends SIGTERM, waits 500ms, then SIGKILL if still alive.
 
 ---
 
@@ -332,8 +313,7 @@ Three test suites, all run by `cargo test`:
 
 ### Rule #1
 
-There must never be more than one pomodoro XOR break active at any time.
-Enforced both at the DB level (triggers) and in the scheduler.
+There must never be more than one pomodoro XOR break active at any time. Enforced both at the DB level (triggers) and in the scheduler.
 
 ### Pomodoro vs. Break asymmetry
 
@@ -346,43 +326,25 @@ Enforced both at the DB level (triggers) and in the scheduler.
 
 ### `--force` and process lifecycle
 
-`--force` was added because stale entries (process died without cleaning up)
-prevented starting new pomodori. The error message had always mentioned
-`--force`, but the flag was only defined on `break start` and never wired
-through. The fix made the flag operational on both commands and added process
-termination (SIGTERM → SIGKILL escalation) so that `--force` works even when
-the existing process is genuinely alive.
+`--force` was added because stale entries (process died without cleaning up) prevented starting new pomodori. The error message had always mentioned `--force`, but the flag was only defined on `break start` and never wired through. The fix made the flag operational on both commands and added process termination (SIGTERM → SIGKILL escalation) so that `--force` works even when the existing process is genuinely alive.
 
 ### Hooks are opt-in
 
-Hook files without the executable bit are silently skipped. This default
-prevents the sample scripts (created by `rustomato init`) from executing.
-Users explicitly `chmod +x` hooks they want.
+Hook files without the executable bit are silently skipped. This default prevents the sample scripts (created by `rustomato init`) from executing. Users explicitly `chmod +x` hooks they want.
 
 ### After-hook failures are warnings
 
-`after-*` hooks cannot abort the operation — the transition has already
-persisted. Failures are logged to stderr (only in verbose mode) but do not
-change the exit code or the DB state.
+`after-*` hooks cannot abort the operation — the transition has already persisted. Failures are logged to stderr (only in verbose mode) but do not change the exit code or the DB state.
 
 ### `SchedulingError::AlreadyRunning` message
 
-The error mentions `--force` so users know the flag exists to override the
-check.
+The error mentions `--force` so users know the flag exists to override the check.
 
 ### No future timestamps
 
-We never apply any action about the future. When a bare `HH:MM` is given
-as a timestamp, it is interpreted as **today at that time** if it is in the
-past or right now, or **yesterday at that time** if the wall-clock time is
-in the future. This avoids silently creating entries with timestamps in the
-future.
+We never apply any action about the future. When a bare `HH:MM` is given as a timestamp, it is interpreted as **today at that time** if it is in the past or right now, or **yesterday at that time** if the wall-clock time is in the future. This avoids silently creating entries with timestamps in the future.
 
-`HH:MM` parsing is built into the single unified `parse_timestamp` function
-in `lib.rs`, alongside RFC 3339 / ISO 8601 and bare Unix integers. Every
-argument that accepts a timestamp (`--started-at`, `--finished-at`, `--target`,
-the positional argument in `show`) uses the same function, ensuring
-consistent behavior across the CLI.
+`HH:MM` parsing is built into the single unified `parse_timestamp` function in `lib.rs`, alongside RFC 3339 / ISO 8601 and bare Unix integers. Every argument that accepts a timestamp (`--started-at`, `--finished-at`, `--target`, the positional argument in `show`) uses the same function, ensuring consistent behavior across the CLI.
 
 # Meta
 
