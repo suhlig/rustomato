@@ -53,6 +53,21 @@ The counter resets after a long break (`duration >= 10`) or at midnight. Short b
 
 Pass `--duration` explicitly to override the auto-calculated duration.
 
+# Target Selection
+
+By default, a command refers to the **active** pomodoro or break. If nothing is active, it falls back to the most recently ended entry.
+
+Use `--target` to annotate or interrupt a specific entry:
+
+| Target format | Example | Description |
+|---|---|---|
+| UUID prefix | `--target a1b2c3` | An abbreviated or full UUID (minimum 6 chars) |
+| Negative index | `--target -1` | The most recently finished pomodoro (`-2` = second most recent, up to `-9`) |
+| Today's time | `--target 14:30` | The pomodoro or break running at that time today |
+| RFC 3339 | `--target 2026-05-30T14:30:00` | The pomodoro or break running at that absolute time |
+
+Targets are resolved using the same logic as `rustomato show <uuid>`, so any identifier that works with `show` also works with `--target`.
+
 # Interrupts
 
 When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
@@ -82,21 +97,6 @@ If no annotation text is given on the command line, rustomato reads from stdin, 
 ```sh
 echo "Fixed the flaky test" | rustomato pomodoro annotate
 ```
-
-## Target selection
-
-By default, the annotation is attached to the **active** pomodoro or break. If nothing is active, it falls back to the most recently ended entry.
-
-Use `--target` to annotate a specific entry:
-
-| Target format | Example | Description |
-|---|---|---|
-| UUID prefix | `--target a1b2c3` | An abbreviated or full UUID (minimum 6 chars) |
-| Negative index | `--target -1` | The most recently finished pomodoro (`-2` = second most recent, up to `-9`) |
-| Today's time | `--target 14:30` | The pomodoro or break running at that time today |
-| RFC 3339 | `--target 2026-05-30T14:30:00` | The pomodoro or break running at that absolute time |
-
-Targets are resolved using the same logic as `rustomato show <uuid>`, so any identifier that works with `show` also works with `--target`.
 
 ## Interactive annotation with `sk`
 
