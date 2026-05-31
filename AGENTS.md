@@ -242,11 +242,11 @@ rustomato
     interrupt [--kind internal|external]
     annotate [TEXT...]
     log      [--started-at TS] [--finished-at TS] [--duration MIN]
-    cancel
+    cancel   [--target TARGET]
   break
     start    [--duration MIN] [--force]
     annotate [TEXT...]
-    cancel
+    cancel   [--target TARGET]
   report
     day    [--date YYYY-MM-DD]
     week   [--date YYYY-MM-DD]
@@ -327,6 +327,16 @@ There must never be more than one pomodoro XOR break active at any time. Enforce
 ### `--force` and process lifecycle
 
 `--force` was added because stale entries (process died without cleaning up) prevented starting new pomodori. The error message had always mentioned `--force`, but the flag was only defined on `break start` and never wired through. The fix made the flag operational on both commands and added process termination (SIGTERM → SIGKILL escalation) so that `--force` works even when the existing process is genuinely alive.
+
+### `--target` on cancel
+
+`pomodoro cancel --target` and `break cancel --target` allow cancelling (or finishing, for breaks) a specific past entry identified by UUID prefix, negative index (`-1`..`-9`), or timestamp. This is useful for retroactively cancelling a pomodoro that was recorded as completed but shouldn't count (e.g. you were away from the computer).
+
+- For pomodori: sets `cancelled_at` and clears `finished_at`, changing the status from Finished → Cancelled.
+- For breaks: sets `finished_at` ("cancel" on a break always means finish).
+- Already-cancelled pomodori and already-finished breaks return `CannotResolveTarget`.
+- Hooks follow the same pattern as active cancel: `BeforeCancelPomodoro` / `AfterCancelPomodoro` for pomodori, `BeforeFinishBreak` / `AfterFinishBreak` for breaks.
+- When no `--target` is given, the existing active-entry cancel behaviour is unchanged.
 
 ### Hooks are opt-in
 

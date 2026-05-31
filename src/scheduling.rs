@@ -268,6 +268,50 @@ impl Scheduler {
         Ok(schedulable)
     }
 
+    /// Cancel a specific pomodoro or break identified by `--target`.
+    ///
+    /// For a pomodoro: sets `cancelled_at` (even if it was previously finished).
+    /// For a break: sets `finished_at` ("cancel" on a break finishes it).
+    ///
+    /// Returns an error if the target is already in the terminal state
+    /// (pomodoro already cancelled, break already finished).
+    pub fn cancel_target(&self, raw_target: &str) -> Result<Schedulable, SchedulingError> {
+        let mut target = self.resolve_target(raw_target, None)?;
+
+        match target.kind {
+            Kind::Pomodoro => {
+                if target.cancelled_at != 0 {
+                    return Err(SchedulingError::CannotResolveTarget(
+                        "pomodoro is already cancelled".to_string(),
+                    ));
+                }
+                self.run_hook(HookEvent::BeforeCancelPomodoro, &target)?;
+                target.cancelled_at = now();
+                target.finished_at = 0;
+                self.repo
+                    .save(&target)
+                    .map_err(|_| SchedulingError::ExecutionError)?;
+                self.run_hook_after(HookEvent::AfterCancelPomodoro, &target);
+                Ok(target)
+            }
+            Kind::Break => {
+                if target.finished_at != 0 {
+                    return Err(SchedulingError::CannotResolveTarget(
+                        "break is already finished".to_string(),
+                    ));
+                }
+                self.run_hook(HookEvent::BeforeFinishBreak, &target)?;
+                target.finished_at = now();
+                target.cancelled_at = 0;
+                self.repo
+                    .save(&target)
+                    .map_err(|_| SchedulingError::ExecutionError)?;
+                self.run_hook_after(HookEvent::AfterFinishBreak, &target);
+                Ok(target)
+            }
+        }
+    }
+
     /// Access the underlying repository (used in tests).
     pub fn repo(&self) -> &Repository {
         &self.repo

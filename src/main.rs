@@ -122,9 +122,17 @@ struct LogPomodoro {
     duration: Option<u8>,
 }
 
-/// Cancel the current Pomodoro
+/// Cancel the current Pomodoro, or a specific one with --target.
 #[derive(Parser)]
-struct CancelPomodoro {}
+struct CancelPomodoro {
+    /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
+
+    /// Shorthand: -1..-9 for recent finished pomodori. Conflicts with --target.
+    #[clap(allow_hyphen_values = true)]
+    index: Option<String>,
+}
 
 /// Annotates a Pomodoro
 #[derive(Parser)]
@@ -165,9 +173,17 @@ struct StartBreak {
     force: bool,
 }
 
-/// Cancel the current Break
+/// Cancel the current Break, or a specific one with --target.
 #[derive(Parser)]
-struct CancelBreak {}
+struct CancelBreak {
+    /// Target: a UUID prefix, -1..-9 for recent breaks, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
+
+    /// Shorthand: -1..-9 for recent breaks. Conflicts with --target.
+    #[clap(allow_hyphen_values = true)]
+    index: Option<String>,
+}
 
 /// Annotates a Break
 #[derive(Parser)]
@@ -395,7 +411,12 @@ fn main() {
                 Some(Kind::Pomodoro),
                 verbose,
             ),
-            PomodoroCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
+            PomodoroCommands::Cancel(ref opts) => cmd_cancel(
+                &scheduler,
+                opts.target.as_deref(),
+                opts.index.as_deref(),
+                verbose,
+            ),
         },
         SubCommands::Status(_) => cmd_status(&db_url),
         SubCommands::List(ref opts) => cmd_list(&db_url, opts),
@@ -409,7 +430,12 @@ fn main() {
                 Some(Kind::Break),
                 verbose,
             ),
-            BreakCommands::Cancel(_) => cmd_cancel(&scheduler, verbose),
+            BreakCommands::Cancel(ref opts) => cmd_cancel(
+                &scheduler,
+                opts.target.as_deref(),
+                opts.index.as_deref(),
+                verbose,
+            ),
         },
         SubCommands::Report(report_options) => match report_options.subcmd {
             ReportCommands::Day(day_options) => {
@@ -631,8 +657,17 @@ fn cmd_annotate(
     }
 }
 
-fn cmd_cancel(scheduler: &Scheduler, verbose: bool) {
-    match scheduler.cancel() {
+fn cmd_cancel(scheduler: &Scheduler, target: Option<&str>, index: Option<&str>, verbose: bool) {
+    let result = match (target, index) {
+        (Some(_), Some(_)) => {
+            eprintln!("Error: cannot use both --target and a positional index.");
+            process::exit(1);
+        }
+        (Some(t), None) => scheduler.cancel_target(t),
+        (None, Some(idx)) => scheduler.cancel_target(idx),
+        (None, None) => scheduler.cancel(),
+    };
+    match result {
         Ok(schedulable) => {
             if verbose {
                 println!("{}", schedulable);

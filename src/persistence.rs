@@ -636,7 +636,7 @@ impl Repository {
             }
             Status::Cancelled => {
                 match self.db.execute(
-                        "UPDATE schedulables SET pid = NULL, cancelled_at = ?2 WHERE uuid == ?1;",
+                        "UPDATE schedulables SET pid = NULL, cancelled_at = ?2, finished_at = NULL WHERE uuid == ?1;",
                         params![uuid, s.cancelled_at],
                     ){
                     Ok(_) => {
@@ -647,7 +647,7 @@ impl Repository {
             }
             Status::Finished => {
                 match self.db.execute(
-                        "UPDATE schedulables SET pid = NULL, finished_at = ?2 WHERE uuid == ?1;",
+                        "UPDATE schedulables SET pid = NULL, finished_at = ?2, cancelled_at = NULL WHERE uuid == ?1;",
                         params![uuid, s.finished_at],
                     ){
                     Ok(_) => {

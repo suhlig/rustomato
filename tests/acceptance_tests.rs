@@ -913,6 +913,175 @@ mod acceptance_tests {
             ));
     }
 
+    // --- cancel with --target and positional index ---
+
+    #[test]
+    fn cancel_no_target_no_active_fails() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("cancel")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("nothing active"));
+    }
+
+    #[test]
+    fn cancel_target_negative_index() {
+        let dir = tempdir().unwrap();
+
+        // Seed two finished pomodori, then cancel the second-most-recent (-2).
+        // Pomodoro cancel always exits 1.
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+
+            let mut p1 = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            p1.started_at = 1000;
+            let p1 = repo.save(&p1).expect("saving p1");
+            let mut p1 = repo.find_by_uuid(p1.uuid).unwrap();
+            p1.finished_at = 2000;
+            repo.save(&p1).expect("finishing p1");
+
+            let mut p2 = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            p2.started_at = 3000;
+            let p2 = repo.save(&p2).expect("saving p2");
+            let mut p2 = repo.find_by_uuid(p2.uuid).unwrap();
+            p2.finished_at = 4000;
+            repo.save(&p2).expect("finishing p2");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("cancel")
+            .arg("--target")
+            .arg("-2")
+            .assert()
+            .code(predicate::eq(1));
+    }
+
+    #[test]
+    fn cancel_break_target_uuid_prefix() {
+        let dir = tempdir().unwrap();
+
+        // Seed a non-finished break, then cancel (= finish) it via --target with UUID.
+        // We cannot use -1 here because the seeded break has pid=0, making it "active"
+        // (pid_is_alive(0) is true), so -N excludes it.
+        let break_uuid = {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+
+            let mut b = Schedulable::new(0, Kind::Break, 5);
+            b.started_at = 1000;
+            let b = repo.save(&b).expect("seeding break");
+            b.uuid.to_string()
+        };
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("cancel")
+            .arg("--target")
+            .arg(&break_uuid[..8])
+            .assert()
+            .code(predicate::eq(0));
+    }
+
+    // --- these next tests demonstrate the -1..-9 positional shortcut ---
+
+    // --- cancel positional index (PROVES BUG: -1 is currently rejected) ---
+
+    #[test]
+    fn cancel_positional_index() {
+        let dir = tempdir().unwrap();
+
+        // Seed a finished pomodoro, then cancel it via -1 shorthand.
+        // Pomodoro cancel exits 1.
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            use std::process;
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+
+            let mut pom = Schedulable::new(process::id(), Kind::Pomodoro, 25);
+            pom.started_at = 1000;
+            let pom = repo.save(&pom).expect("saving active pomodoro");
+            let mut pom = repo.find_by_uuid(pom.uuid).unwrap();
+            pom.finished_at = 2000;
+            repo.save(&pom).expect("finishing pomodoro");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("cancel")
+            .arg("-1")
+            .assert()
+            .code(predicate::eq(1));
+    }
+
+    #[test]
+    fn cancel_break_positional_is_not_rejected_by_clap() {
+        let dir = tempdir().unwrap();
+
+        // The break gets saved with pid=0, making it "active" to the repository,
+        // so -1 has nothing to resolve to. But the test proves clap accepts the
+        // positional -1 syntax (it doesn't say "unexpected argument").
+        {
+            use rustomato::persistence::Repository;
+            use rustomato::{Kind, Schedulable};
+            let db_path = dir.path().join("data.db");
+            let repo = Repository::new(&db_path.to_string_lossy());
+
+            let mut b = Schedulable::new(0, Kind::Break, 5);
+            b.started_at = 1000;
+            repo.save(&b).expect("seeding break");
+        }
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("cancel")
+            .arg("-1")
+            .assert()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("no entry at position -1"));
+    }
+
+    #[test]
+    fn cancel_positional_and_target_conflict() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("pomodoro")
+            .arg("cancel")
+            .arg("--target")
+            .arg("-1")
+            .arg("-1")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "cannot use both --target and a positional index",
+            ));
+    }
+
     // --- log ---
 
     #[test]

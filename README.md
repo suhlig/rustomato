@@ -379,8 +379,7 @@ cargo release patch
 
 # TODO
 
-* Allow `--target` for the cancel command, including shortcuts, in order to cancel a specific pomodoro or break retroactively (e.g. we let the pomodoro elapse, thus it is recorded as completed, but acutally we were away from the computer for a while and chatted with a colleague)
 * Check and fix consistency of writing pomodoro vs. Pomodoro. Same for break.
 * Show progress bar only when attached to a terminal
   - When resizing due to SIGWINCH, shall we clear the progress bar and redraw it? Right now we add another line with the new size.
-* Does a CSV export of pomodori and breaks make sense for externally created reports?
+* Does a CSV export of pomodori and breaks make sense for externally created reports? Is JSON better, or both?
