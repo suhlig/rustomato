@@ -36,6 +36,28 @@ impl fmt::Display for PersistenceError {
     }
 }
 
+// ── Error helpers ────────────────────────────────────────────────
+
+/// Shorthand for `PersistenceError::CannotFind(e.to_string())`.
+fn find_err(e: rusqlite::Error) -> PersistenceError {
+    PersistenceError::CannotFind(e.to_string())
+}
+
+/// Shorthand for `PersistenceError::CannotSave(e.to_string())`.
+fn save_err(e: rusqlite::Error) -> PersistenceError {
+    PersistenceError::CannotSave(e.to_string())
+}
+
+/// Shorthand for `PersistenceError::CannotUpdate(e.to_string())`.
+fn update_err(e: rusqlite::Error) -> PersistenceError {
+    PersistenceError::CannotUpdate(e.to_string())
+}
+
+/// Shorthand for `PersistenceError::CannotDelete(e.to_string())`.
+fn delete_err(e: rusqlite::Error) -> PersistenceError {
+    PersistenceError::CannotDelete(e.to_string())
+}
+
 // ── Row mappers ──────────────────────────────────────────────────
 
 /// Map a `schedulables` row to a `Schedulable`. Panics on data-integrity
@@ -79,7 +101,9 @@ fn row_to_interrupt_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<InterruptLo
     Ok(InterruptLog {
         uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
         schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
-        kind: InterruptionKind::from(&kind_str).expect("invalid interrupt kind in DB"),
+        kind: kind_str
+            .parse::<InterruptionKind>()
+            .expect("invalid interrupt kind in DB"),
         created_at: row.get(3)?,
     })
 }
@@ -121,7 +145,7 @@ impl Repository {
                 Err(e) => Err(e),
             },
             Err(QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+            Err(e) => Err(find_err(e)),
         }
     }
 
@@ -137,7 +161,7 @@ impl Repository {
                 s.uuid = uuid;
                 Ok(s)
             }
-            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e)))
+            Err(e) => Err(find_err(e))
         }
     }
 
@@ -155,7 +179,7 @@ impl Repository {
                 "schedulable {} not found",
                 uuid_s
             ))),
-            Err(e) => Err(PersistenceError::CannotUpdate(format!("{}", e))),
+            Err(e) => Err(update_err(e)),
         }
     }
 
@@ -190,7 +214,7 @@ impl Repository {
                 body: annotation.body.clone(),
                 created_at: annotation.created_at,
             }),
-            Err(e) => Err(PersistenceError::CannotSave(format!("{}", e))),
+            Err(e) => Err(save_err(e)),
         }
     }
 
@@ -404,7 +428,7 @@ impl Repository {
                 kind: log.kind,
                 created_at: log.created_at,
             }),
-            Err(e) => Err(PersistenceError::CannotSave(format!("{}", e))),
+            Err(e) => Err(save_err(e)),
         }
     }
 
@@ -632,7 +656,7 @@ impl Repository {
                                  None => return Err(PersistenceError::CannotSave(format!("{} could not be inserted as active, but there was no active Pomodoro or Break found, either.", s))),
                              }
                          };
-                        Err(PersistenceError::CannotSave(format!("{}", e)))
+                        Err(save_err(e))
                     }
                 }
             }
@@ -644,7 +668,7 @@ impl Repository {
                     Ok(_) => {
                         Ok(self.find_by_uuid(s.uuid).expect("Could not find the cancelled"))
                     },
-                    Err(e) => {Err(PersistenceError::CannotUpdate(format!("{}", e)))}
+                    Err(e) => {Err(update_err(e))}
                 }
             }
             Status::Finished => {
@@ -655,7 +679,7 @@ impl Repository {
                     Ok(_) => {
                         Ok(self.find_by_uuid(s.uuid).expect("Could not find the finished"))
                     },
-                    Err(e) => {Err(PersistenceError::CannotUpdate(format!("{}", e)))}
+                    Err(e) => {Err(update_err(e))}
                 }
             }
         }
@@ -678,7 +702,7 @@ impl Repository {
                 "schedulable {} not found",
                 uuid_s
             ))),
-            Err(e) => Err(PersistenceError::CannotDelete(format!("{}", e))),
+            Err(e) => Err(delete_err(e)),
         }
     }
 }

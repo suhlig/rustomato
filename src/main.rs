@@ -578,7 +578,7 @@ fn cmd_pomodoro_start(scheduler: &Scheduler, opts: &StartPomodoro, pid: u32, ver
 }
 
 fn cmd_pomodoro_interrupt(scheduler: &Scheduler, opts: &InterruptPomodoro, verbose: bool) {
-    let kind = match InterruptionKind::from(&opts.kind) {
+    let kind: InterruptionKind = match opts.kind.parse() {
         Ok(k) => k,
         Err(e) => {
             eprintln!("Error: {}.", e);
@@ -668,8 +668,7 @@ fn cmd_pomodoro_log(scheduler: &Scheduler, opts: &LogPomodoro, verbose: bool) {
     pom.started_at = started_at;
     pom.finished_at = finished_at;
 
-    if let Err(err) = scheduler.log(&pom) {
-        eprintln!("Error: {}.", err);
+    if scheduler.log(&pom).is_err() {
         process::exit(1);
     }
 }
@@ -734,8 +733,7 @@ fn cmd_break_log(scheduler: &Scheduler, opts: &LogBreak, verbose: bool) {
     brk.started_at = started_at;
     brk.finished_at = finished_at;
 
-    if let Err(err) = scheduler.log_break(&brk) {
-        eprintln!("Error: {}.", err);
+    if scheduler.log(&brk).is_err() {
         process::exit(1);
     }
 }
@@ -996,13 +994,7 @@ fn cmd_show(db_url: &Url, opts: &ShowCommand) {
         .interrupts_for(schedulable.uuid)
         .unwrap_or_default();
 
-    let status_str = match schedulable.status() {
-        Status::Active => "active",
-        Status::Stale => "stale",
-        Status::Finished => "finished",
-        Status::Cancelled => "cancelled",
-        Status::New => "new",
-    };
+    let status_str = schedulable.status().as_str();
 
     let duration_min = schedulable.duration;
     let started_str = format_timestamp(schedulable.started_at);

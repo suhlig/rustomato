@@ -82,13 +82,7 @@ fn format_ts(ts: i64) -> String {
 }
 
 fn status_str(s: &Schedulable) -> &'static str {
-    match s.status() {
-        crate::Status::Active => "active",
-        crate::Status::Stale => "stale",
-        crate::Status::Finished => "finished",
-        crate::Status::Cancelled => "cancelled",
-        crate::Status::New => "new",
-    }
+    s.status().as_str()
 }
 
 /// Compute elapsed time in minutes (based on finished_at or cancelled_at).

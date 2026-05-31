@@ -212,7 +212,7 @@ mod hooks_integration {
         brk.started_at = 2000;
         brk.finished_at = 2300;
 
-        let result = scheduler(dir.path()).log_break(&brk);
+        let result = scheduler(dir.path()).log(&brk);
         assert!(result.is_ok());
 
         let saved = result.unwrap();

@@ -3,6 +3,7 @@ use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::types::{ToSql, ToSqlOutput};
 use std::collections::HashSet;
 use std::fmt;
+use std::str::FromStr;
 use uuid::Uuid;
 
 pub mod export;
@@ -69,21 +70,25 @@ pub enum InterruptionKind {
 }
 
 impl InterruptionKind {
-    pub fn from(str: &str) -> Result<Self, String> {
-        match str.to_lowercase().as_str() {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            InterruptionKind::Internal => "internal",
+            InterruptionKind::External => "external",
+        }
+    }
+}
+
+impl FromStr for InterruptionKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
             "internal" => Ok(InterruptionKind::Internal),
             "external" => Ok(InterruptionKind::External),
             other => Err(format!(
                 "unknown interruption kind '{}'; expected 'internal' or 'external'",
                 other
             )),
-        }
-    }
-
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            InterruptionKind::Internal => "internal",
-            InterruptionKind::External => "external",
         }
     }
 }
@@ -114,6 +119,18 @@ pub enum Status {
     Stale,
     Cancelled,
     Finished,
+}
+
+impl Status {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Status::Active => "active",
+            Status::Stale => "stale",
+            Status::Finished => "finished",
+            Status::Cancelled => "cancelled",
+            Status::New => "new",
+        }
+    }
 }
 
 impl Kind {
@@ -400,6 +417,14 @@ pub fn format_time(timestamp: i64) -> String {
         .single()
         .map(|dt| dt.format("%H:%M").to_string())
         .unwrap_or_else(|| timestamp.to_string())
+}
+
+/// Return the current Unix timestamp (seconds since epoch).
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("SystemTime before UNIX EPOCH!")
+        .as_secs() as i64
 }
 
 pub fn format_timestamp(timestamp: i64) -> String {
