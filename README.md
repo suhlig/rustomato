@@ -3,7 +3,7 @@ Simple [Pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) timer writte
 # Usage
 
 ```command
-$ rustomato pomodoro [start]         # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
+$ rustomato pomodoro start           # Starts a new Pomodoro. Auto-finishes the currently active break if there is one.
 $ rustomato pomodoro interrupt       # Records an interruption on the active (or most recently finished) Pomodoro.
 $ rustomato pomodoro annotate <text> # Annotates the active, or the most recently completed, Pomodoro with the given text.
 $ rustomato pomodoro log             # Log an externally completed pomodoro.
@@ -346,6 +346,12 @@ cargo release patch
 
 # TODO
 
+* Allow `--target` for the cancel command, including shortcuts, in order to cancel a specific pomodoro or break retroactively (e.g. we let the pomodoro elapse, thus it is recorded as completed, but acutally we were away from the computer for a while and chatted with a colleague)
+* Is that statement even true?
+
+  > Auto-finishes the currently active Pomodoro if there is one.
+
+* Check and fix consistency of writing pomodoro vs. Pomodoro. Same for break.
 * Show progress bar only when attached to a terminal
   - When resizing due to SIGWINCH, shall we clear the progress bar and redraw it? Right now we add another line with the new size.
 * Does a CSV export of pomodori and breaks make sense for externally created reports?
