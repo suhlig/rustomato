@@ -23,7 +23,7 @@ Each row is one schedulable (pomodoro or break). Timestamps are ISO 8601 with ti
 
 Because the output is plain CSV, you can pipe it into any data tool — QSV, Miller, pandas, R, or a spreadsheet.
 
-The rest of this page walks through a concrete example: turning a week of pomodoro data into a PDF report using **QSV** (data prep), **Typst** (layout), and **Gnuplot** (charts). All four are single binaries — no language runtime required.
+The rest of this page walks through a concrete example: turning a week of pomodoro data into a PDF report using **Miller** (data prep), **Typst** (layout), and **Gnuplot** (charts). All four are single binaries — no language runtime required.
 
 ## Example data
 
@@ -68,17 +68,15 @@ g3h4i5j6k7l8m9n0,pomodoro,25,2026-04-24T11:00:00+02:00,2026-04-24T11:25:00+02:00
 
 That's 33 entries across the working week: 18 pomodori (17 finished, 1 cancelled), 13 short breaks, 2 long breaks, and a weekend with nothing. Several pomodori carry annotations.
 
-Save this as `example.csv` so you can follow along without running rustomato.
-
 ## Tool installation
 
 On macOS with Homebrew:
 
 ```sh
-brew install qsv typst gnuplot jq miller
+brew install miller typst gnuplot jq
 ```
 
-## Step 1 — Prepare the data with QSV
+## Step 1 — Prepare the data with Miller (mlr)
 
 The raw CSV contains every schedulable. For a weekly report we want:
 
@@ -86,16 +84,15 @@ The raw CSV contains every schedulable. For a weekly report we want:
 - **Daily interruption count**
 - **Weekly summary stats**
 
+We use [Miller](https://miller.readthedocs.io/) for data preparation because it handles complex CSV quoting correctly (the annotations JSON column contains commas and quotes that confuse simpler CSV parsers).
+
 ```sh
-# Filter finished pomodori, extract the date component, count per day
-qsv search "pomodoro" example.csv |
-  qsv search "finished" |
-  qsv select started_at |
-  qsv behead |
-  sed 's/T.*//' |
-  sort |
-  uniq -c |
-  awk '{print $2","$1}' > daily_counts.csv
+# Filter finished pomodori, extract the date, count per day
+mlr --csv filter '$kind == "pomodoro" && $status == "finished"' \
+  then put '$date = strftime($started_at, "%Y-%m-%d")' \
+  then stats1 -a count -f date -g date \
+  then rename date_count,pomodori \
+  example.csv > daily_counts.csv
 ```
 
 The result (`daily_counts.csv`):
@@ -117,15 +114,10 @@ A quick shell pipeline to get aggregate numbers for the report header:
 # Total finished pomodori (exclude header)
 TOTAL=$(tail -n +2 daily_counts.csv | awk -F, '{s+=$2}END{print s}')
 
-# Total interruptions (sum of the interruptions column for finished pomodori)
-INTERRUPTIONS=$(
-  qsv search "pomodoro" example.csv |
-    qsv search "finished" |
-    qsv select interruptions |
-    qsv behead |
-    paste -sd+ |
-    bc
-)
+# Total interruptions for finished pomodori
+INTERRUPTIONS=$(mlr --csv filter '$kind == "pomodoro" && $status == "finished"' \
+  then stats1 -a sum -f interruptions \
+  example.csv | tail -n +2)
 
 # Days with at least one pomodoro
 DAYS_WORKED=$(( $(wc -l < daily_counts.csv | tr -d ' ') - 1 ))
@@ -332,20 +324,18 @@ set -euo pipefail
 
 # Weekly pomodoro report — full pipeline
 # Usage:  cd doc/export && bash export.sh
-# Requires: qsv, typst, gnuplot, jq
+# Requires: miller, typst, gnuplot, jq
 
 # 1. Export from rustomato (or use example.csv for testing)
 rustomato export --from 2026-04-20 --to 2026-04-26 > export.csv
 
-# 2. Aggregate daily pomodoro counts with QSV
-qsv search "pomodoro" export.csv |
-  qsv search "finished" |
-  qsv select started_at |
-  qsv behead |
-  sed 's/T.*//' |
-  sort |
-  uniq -c |
-  awk '{print $2","$1}' > daily_counts.csv
+# 2. Aggregate daily pomodoro counts
+# mlr handles CSV quoting correctly (qsv chokes on the annotations JSON column)
+mlr --csv filter '$kind == "pomodoro" && $status == "finished"' \
+  then put '$date = strftime($started_at, "%Y-%m-%d")' \
+  then stats1 -a count -f date -g date \
+  then rename date_count,pomodori \
+  export.csv > daily_counts.csv
 
 # 3. Extract annotations
 cat export.csv |

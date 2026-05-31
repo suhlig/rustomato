@@ -39,6 +39,8 @@ enum SubCommands {
     Report(ReportCommand),
     /// Display the man page
     Man(ManCommand),
+    /// Export entries as CSV for external analysis
+    Export(ExportCommand),
     #[clap(hide = true)]
     Completions(CompletionsCommand),
 }
@@ -50,6 +52,17 @@ struct InitCommand {}
 /// Show the man page
 #[derive(Parser)]
 struct ManCommand {}
+
+/// Export entries as CSV for external analysis
+#[derive(Parser)]
+struct ExportCommand {
+    /// Start date (YYYY-MM-DD). Defaults to the earliest entry.
+    #[clap(long, value_name = "DATE")]
+    from: Option<String>,
+    /// End date (YYYY-MM-DD). Defaults to now.
+    #[clap(long, value_name = "DATE")]
+    to: Option<String>,
+}
 
 /// Work with a Pomodoro
 #[derive(Parser)]
@@ -488,6 +501,10 @@ fn main() {
                 );
             }
         },
+        SubCommands::Export(ref opts) => {
+            let repo = Repository::from_url(&db_url);
+            rustomato::export::cmd_export(&repo, opts.from.as_deref(), opts.to.as_deref());
+        }
         SubCommands::Man(_) => unreachable!(),
         SubCommands::Completions(_) => unreachable!(),
     };

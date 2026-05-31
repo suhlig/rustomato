@@ -16,6 +16,7 @@ Rustomato is a command-line Pomodoro timer written in Rust. It manages pomodori 
 | `persistence.rs` | `Repository` — SQLite read/write, constraint enforcement, active-entry queries |
 | `hooks.rs` | Hook discovery, execution, timeout, environment construction |
 | `report.rs` | Day/week/month/last-day/interruptions report generation |
+| `export.rs` | CSV export of pomodori and breaks with annotations as a JSON column |
 | `migration.rs` | Schema migration runner (V1–V7) |
 
 ---

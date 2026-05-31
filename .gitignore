@@ -1,4 +1,6 @@
 */target
 target
-ci/private-config.yml
-.aider*
+doc/export/report.pdf
+doc/export/daily_chart.svg
+doc/export/daily_counts.csv
+doc/export/annotations.csv

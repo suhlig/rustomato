@@ -1,5 +1,7 @@
-set terminal pdfcairo enhanced font "Helvetica,10"
-set output "daily_chart.pdf"
+set terminal svg enhanced font "Helvetica,10"
+set output "daily_chart.svg"
+
+set datafile separator comma
 
 set style data histograms
 set style fill solid 0.6 border

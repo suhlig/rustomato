@@ -1,6 +1,6 @@
 // report.typ — Weekly pomodoro report
 // Usage:  typst compile report.typ report.pdf
-// Expects: daily_counts.csv, annotations.csv, daily_chart.pdf (optional)
+// Expects: daily_counts.csv, annotations.csv, daily_chart.svg
 
 #let data = csv("daily_counts.csv")
 
@@ -16,10 +16,11 @@
 
 == Summary
 
-#let total = data.slice(1).map(r => int(r.at(1))).sum()
+#let counts = data.slice(1).map(r => int(r.at(1)))
+#let total = counts.sum()
 #let days = data.len() - 1
-#let avg = if days > 0 { calc.round(total / days, 1) } else { 0 }
-#let best = data.slice(1).map(r => int(r.at(1))).max()
+#let avg = if days > 0 { calc.round(total / days, digits: 1) } else { 0 }
+#let best = calc.max(..counts)
 
 #grid(
   columns: (1fr, 1fr, 1fr),
@@ -39,25 +40,36 @@
 
 #v(2em)
 
+== Daily Chart
+
+#image("daily_chart.svg", width: 100%)
+
+#v(2em)
+
 == Daily Breakdown
 
-#table(
-  columns: (auto, auto, auto, auto),
-  stroke: none,
-  [*Date*], [*Pomodori*], [*Bar*], [*Cumulative*],
-  ..data.slice(1).map(r => {
+#let rows = {
+  let cum = 0
+  let result = ()
+  for r in data.slice(1) {
     let date = r.at(0)
     let count = int(r.at(1))
+    cum += count
     let bar = box(
       width: 1em * count,
       height: 0.6em,
       fill: navy,
     )
-    let cum = data.slice(1, data.position-of(r) + 1)
-      .map(c => int(c.at(1)))
-      .sum()
-    (date, str(count), bar, str(cum))
-  }).flatten()
+    result += (date, str(count), bar, str(cum))
+  }
+  result
+}
+
+#table(
+  columns: (auto, auto, auto, auto),
+  stroke: none,
+  [*Date*], [*Pomodori*], [*Bar*], [*Cumulative*],
+  ..rows
 )
 
 #v(2em)
