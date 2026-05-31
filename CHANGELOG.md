@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-31
+
+### Added
+
+- Add --target to interrupt command
+- Add missing `-1..-9` positional shortcuts
+- Add log to break command
+- Add export command
+
+### Changed
+
+- Move the positional indexes to be standalone
+- Fix the target when annotating
+- Update TODOs
+- Promote the section about target selection to top level
+- Unify target resolution with `0`, `-N`, and kind-aware defaults
+- Allow HH:MM at more places
+- Fix ill-documented start behavior
+- Join hard-wrapped prose paragraphs onto single lines
+- Improve consistency around upper case
+- Stay silent when running without a terminal
+- Use indicatif as it is more actively maintained
+- Hide the cursor during progress bar
+- Fix example for export command
+- Move hooks documentation to separate document
+
 ## [2.0.0] - 2026-05-30
 
 ### Added
