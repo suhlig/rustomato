@@ -106,7 +106,7 @@ pub struct Schedulable {
     pub pid: u32,
     pub kind: Kind,
     pub uuid: SqlUuid,
-    pub duration: i64, // TODO Use duration with a unit
+    pub duration: i64,
     pub started_at: i64,
     pub finished_at: i64,
     pub cancelled_at: i64,

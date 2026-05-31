@@ -380,7 +380,6 @@ fn main() {
         return;
     }
 
-    // TODO Use Clap's `env` option
     let root = match env::var("RUSTOMATO_ROOT") {
         Ok(val) => {
             let root = PathBuf::from(val);
