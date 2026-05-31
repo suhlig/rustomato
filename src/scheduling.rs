@@ -147,6 +147,31 @@ impl Scheduler {
         Ok(saved)
     }
 
+    /// Log an externally completed break (one that wasn't tracked via the timer).
+    pub fn log_break(&self, schedulable: &Schedulable) -> Result<Schedulable, SchedulingError> {
+        // --- before-log-break ---
+        self.run_hook(HookEvent::BeforeLogBreak, schedulable)?;
+
+        let saved = self
+            .repo
+            .save_external_finished(schedulable)
+            .map_err(|e| match e {
+                PersistenceError::OverlappingTimeRange => {
+                    eprintln!("Error: {}.", e);
+                    SchedulingError::ExecutionError
+                }
+                _ => {
+                    eprintln!("Error: {}.", e);
+                    SchedulingError::ExecutionError
+                }
+            })?;
+
+        // --- after-log-break ---
+        self.run_hook_after(HookEvent::AfterLogBreak, &saved);
+
+        Ok(saved)
+    }
+
     /// Record an interruption. Uses the unified target resolution:
     /// tries the active pomodoro first (`0`), then falls back to
     /// the most recent pomodoro (`-1`).

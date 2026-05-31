@@ -245,6 +245,7 @@ rustomato
     cancel   [--target TARGET]
   break
     start    [--duration MIN] [--force]
+    log      [--started-at TS] [--finished-at TS] [--duration MIN]
     annotate [TEXT...]
     cancel   [--target TARGET]
   report
@@ -349,6 +350,10 @@ Hook files without the executable bit are silently skipped. This default prevent
 ### `SchedulingError::AlreadyRunning` message
 
 The error mentions `--force` so users know the flag exists to override the check.
+
+### `break log` (externally completed breaks)
+
+Mirrors `pomodoro log`. Allows logging a break that completed outside of `rustomato`'s timer. Uses `BeforeLogBreak` / `AfterLogBreak` hooks. Default duration is 5 minutes (vs. 25 for pomodoro). Same timestamp parsing rules apply.
 
 ### No future timestamps
 

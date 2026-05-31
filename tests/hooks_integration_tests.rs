@@ -204,6 +204,22 @@ mod hooks_integration {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn log_break_no_hooks_succeeds() {
+        let dir = tempdir().unwrap();
+
+        let mut brk = Schedulable::new(0, Kind::Break, 5);
+        brk.started_at = 2000;
+        brk.finished_at = 2300;
+
+        let result = scheduler(dir.path()).log_break(&brk);
+        assert!(result.is_ok());
+
+        let saved = result.unwrap();
+        assert_eq!(saved.kind, Kind::Break);
+        assert_eq!(saved.finished_at, 2300);
+    }
+
     // --- hooks can observe the finished state via side effects --------------
 
     #[test]

@@ -658,6 +658,23 @@ mod integration_tests {
     }
 
     #[test]
+    fn save_external_finished_break() {
+        let repo = Repository::new("file::memory:");
+
+        let mut brk = Schedulable::new(0, Kind::Break, 5);
+        brk.started_at = 2000;
+        brk.finished_at = 2000 + 5 * 60;
+
+        let saved = repo
+            .save_external_finished(&brk)
+            .expect("saving external finished break");
+
+        assert_eq!(saved.finished_at, 2000 + 5 * 60);
+        assert_eq!(saved.kind, Kind::Break);
+        assert_eq!(saved.interruptions, 0);
+    }
+
+    #[test]
     fn save_external_finished_overlaps_existing_returns_error() {
         let repo = Repository::new("file::memory:");
 

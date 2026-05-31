@@ -49,6 +49,8 @@ pub enum HookEvent {
     AfterStartBreak,
     BeforeFinishBreak,
     AfterFinishBreak,
+    BeforeLogBreak,
+    AfterLogBreak,
 }
 
 impl HookEvent {
@@ -73,6 +75,8 @@ impl HookEvent {
             HookEvent::AfterStartBreak => "after-start-break",
             HookEvent::BeforeFinishBreak => "before-finish-break",
             HookEvent::AfterFinishBreak => "after-finish-break",
+            HookEvent::BeforeLogBreak => "before-log-break",
+            HookEvent::AfterLogBreak => "after-log-break",
         }
     }
 
@@ -96,6 +100,8 @@ impl HookEvent {
         "after-start-break",
         "before-finish-break",
         "after-finish-break",
+        "before-log-break",
+        "after-log-break",
     ];
 }
 

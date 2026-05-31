@@ -1276,6 +1276,200 @@ mod acceptance_tests {
             .success();
     }
 
+    // --- break log ------------------------------------------------------------
+
+    #[test]
+    fn break_log_needs_at_least_one_timestamp() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "at least one of --started-at or --finished-at",
+            ));
+    }
+
+    #[test]
+    fn break_log_all_three_is_error() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:05:00Z")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "cannot specify --duration when both",
+            ));
+    }
+
+    #[test]
+    fn break_log_with_started_at_and_duration() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn break_log_with_finished_at_and_duration() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:05:00Z")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn break_log_with_both_timestamps() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:10:00Z")
+            .assert()
+            .success();
+    }
+
+    #[test]
+    fn break_log_finished_before_started_is_error() {
+        let dir = tempdir().unwrap();
+
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:25:00Z")
+            .arg("--finished-at")
+            .arg("2026-05-29T10:00:00Z")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains(
+                "--finished-at must be after --started-at",
+            ));
+    }
+
+    #[test]
+    fn break_log_with_default_duration() {
+        let dir = tempdir().unwrap();
+
+        // Only --started-at, no --duration → defaults to 5 minutes
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .assert()
+            .success();
+
+        // Verify via verbose that 5 min is recorded
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--verbose")
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T11:00:00Z")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("5 min"));
+    }
+
+    #[test]
+    fn break_log_overlapping_rule1_error() {
+        let dir = tempdir().unwrap();
+
+        // First log: 10:00 - 10:05
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:00:00Z")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .success();
+
+        // Second log overlapping: 10:03 - 10:08
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("2026-05-29T10:03:00Z")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .failure()
+            .code(predicate::eq(1))
+            .stderr(predicate::str::contains("Error"));
+    }
+
+    #[test]
+    fn break_log_with_unix_timestamp() {
+        let dir = tempdir().unwrap();
+
+        // Unix timestamp for 2026-05-29T10:00:00Z
+        rustomato()
+            .env("RUSTOMATO_ROOT", dir.path())
+            .arg("--no-hooks")
+            .arg("break")
+            .arg("log")
+            .arg("--started-at")
+            .arg("1780056000")
+            .arg("--duration")
+            .arg("5")
+            .assert()
+            .success();
+    }
+
     // --- report day -----------------------------------------------------------
 
     #[test]
