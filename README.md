@@ -108,13 +108,6 @@ When you call `rustomato pomodoro interrupt`, the current pomodoro's interruptio
 
 `interrupt` uses the unified target resolution: tries the active pomodoro first (`0`), then falls back to the most recent pomodoro (`-1`). If neither exists, it errors.
 
-Interrupt hooks receive two additional environment variables:
-
-| Variable | Example | Description |
-|---|---|---|
-| `RUSTOMATO_INTERRUPT_KIND` | `internal` | `internal` or `external` |
-| `RUSTOMATO_INTERRUPTIONS` | `3` | Total interruption count on this pomodoro |
-
 Use `--kind internal` (default) or `--kind external` to classify the interruption. Internal interruptions are self-inflicted (e.g. checking your phone); external ones are caused by the environment (e.g. a colleague knocking).
 
 # Annotations
@@ -131,6 +124,8 @@ If no annotation text is given on the command line, rustomato reads from stdin, 
 ```sh
 echo "Fixed the flaky test" | rustomato pomodoro annotate
 ```
+
+More details are available in the [annotations documentation](doc/annotations/README.md).
 
 # Hooks
 
