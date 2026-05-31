@@ -214,17 +214,13 @@ impl Scheduler {
             Kind::Pomodoro => {
                 self.run_hook(HookEvent::BeforeCancelPomodoro, schedulable)?;
                 schedulable.cancelled_at = crate::now();
-                self.repo
-                    .save(schedulable)
-                    .expect("Unable to persist cancelled pomodoro");
+                self.repo.save(schedulable).map_err(map_exec_err)?;
                 self.run_hook_after(HookEvent::AfterCancelPomodoro, schedulable);
             }
             Kind::Break => {
                 self.run_hook(HookEvent::BeforeFinishBreak, schedulable)?;
                 schedulable.finished_at = crate::now();
-                self.repo
-                    .save(schedulable)
-                    .expect("Unable to persist finished break");
+                self.repo.save(schedulable).map_err(map_exec_err)?;
                 self.run_hook_after(HookEvent::AfterFinishBreak, schedulable);
             }
         }
@@ -543,7 +539,7 @@ impl Scheduler {
                 self.run_hook(HookEvent::BeforeCancelPomodoro, &schedulable)?;
 
                 schedulable.cancelled_at = crate::now();
-                self.repo.save(&schedulable).expect("Unable to persist");
+                self.repo.save(&schedulable).map_err(map_exec_err)?;
 
                 self.run_hook_after(HookEvent::AfterCancelPomodoro, &schedulable);
 
@@ -554,7 +550,7 @@ impl Scheduler {
                 self.run_hook(HookEvent::BeforeFinishPomodoro, &schedulable)?;
 
                 schedulable.finished_at = crate::now();
-                self.repo.save(&schedulable).expect("Unable to persist");
+                self.repo.save(&schedulable).map_err(map_exec_err)?;
 
                 self.run_hook_after(HookEvent::AfterFinishPomodoro, &schedulable);
 
@@ -565,7 +561,7 @@ impl Scheduler {
                 self.run_hook(HookEvent::BeforeFinishBreak, &schedulable)?;
 
                 schedulable.finished_at = crate::now();
-                self.repo.save(&schedulable).expect("Unable to persist");
+                self.repo.save(&schedulable).map_err(map_exec_err)?;
 
                 self.run_hook_after(HookEvent::AfterFinishBreak, &schedulable);
 

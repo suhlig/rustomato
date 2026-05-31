@@ -134,11 +134,13 @@ impl Status {
 }
 
 impl Kind {
-    pub fn from(str: String) -> Result<Self, UnknownKind> {
-        match str.to_lowercase().as_str() {
+    pub fn from(s: &str) -> Result<Self, UnknownKind> {
+        match s.to_lowercase().as_str() {
             "pomodoro" => Ok(Kind::Pomodoro),
             "break" => Ok(Kind::Break),
-            _ => Err(UnknownKind { offender: str }),
+            _ => Err(UnknownKind {
+                offender: s.to_string(),
+            }),
         }
     }
 }
@@ -232,12 +234,11 @@ impl fmt::Display for Schedulable {
             }
             Status::Active => {
                 let interrupt_info = if self.interruptions > 0 {
-                    let noun = if self.interruptions == 1 {
-                        "interruption"
-                    } else {
-                        "interruptions"
-                    };
-                    format!(" ({} {})", self.interruptions, noun)
+                    format!(
+                        " ({} {})",
+                        self.interruptions,
+                        interruption_noun(self.interruptions)
+                    )
                 } else {
                     String::new()
                 };
@@ -268,12 +269,11 @@ impl fmt::Display for Schedulable {
             }
             Status::Finished => {
                 let interrupt_info = if self.interruptions > 0 {
-                    let noun = if self.interruptions == 1 {
-                        "interruption"
-                    } else {
-                        "interruptions"
-                    };
-                    format!(" ({} {})", self.interruptions, noun)
+                    format!(
+                        " ({} {})",
+                        self.interruptions,
+                        interruption_noun(self.interruptions)
+                    )
                 } else {
                     String::new()
                 };
@@ -425,6 +425,15 @@ pub fn now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .expect("SystemTime before UNIX EPOCH!")
         .as_secs() as i64
+}
+
+/// Returns the correct noun for interruption count ("interruption" vs "interruptions").
+pub fn interruption_noun(count: i64) -> &'static str {
+    if count == 1 {
+        "interruption"
+    } else {
+        "interruptions"
+    }
 }
 
 pub fn format_timestamp(timestamp: i64) -> String {

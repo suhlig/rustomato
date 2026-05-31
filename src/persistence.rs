@@ -69,7 +69,7 @@ fn row_to_schedulable(row: &rusqlite::Row<'_>) -> rusqlite::Result<Schedulable> 
         uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_else(|e| {
             panic!("invalid UUID in database: {}", e);
         })),
-        kind: Kind::from(kind_str).unwrap_or_else(|e| {
+        kind: Kind::from(&kind_str).unwrap_or_else(|e| {
             panic!("invalid kind in database: {}", e.offender);
         }),
         pid: row.get(2).unwrap_or(0),
@@ -86,8 +86,12 @@ fn row_to_annotation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Annotation> {
     let uuid_str: String = row.get(0)?;
     let sched_uuid_str: String = row.get(1)?;
     Ok(Annotation {
-        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_else(|e| {
+            panic!("invalid annotation UUID in database: {}", e);
+        })),
+        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_else(|e| {
+            panic!("invalid schedulable UUID in annotation in database: {}", e);
+        })),
         body: row.get(2)?,
         created_at: row.get(3)?,
     })
@@ -99,8 +103,15 @@ fn row_to_interrupt_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<InterruptLo
     let sched_uuid_str: String = row.get(1)?;
     let kind_str: String = row.get(2)?;
     Ok(InterruptLog {
-        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_default()),
-        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_default()),
+        uuid: SqlUuid(Uuid::parse_str(&uuid_str).unwrap_or_else(|e| {
+            panic!("invalid interrupt_log UUID in database: {}", e);
+        })),
+        schedulable_uuid: SqlUuid(Uuid::parse_str(&sched_uuid_str).unwrap_or_else(|e| {
+            panic!(
+                "invalid schedulable UUID in interrupt_log in database: {}",
+                e
+            );
+        })),
         kind: kind_str
             .parse::<InterruptionKind>()
             .expect("invalid interrupt kind in DB"),

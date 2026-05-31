@@ -100,10 +100,6 @@ struct StartPomodoro {
     force: bool,
 }
 
-/// Finishes the active Pomodoro
-#[derive(Parser)]
-struct FinishPomodoro {}
-
 /// Marks a Pomodoro as interrupted
 #[derive(Parser)]
 struct InterruptPomodoro {
@@ -252,10 +248,6 @@ struct AnnotateBreak {
     #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
     target: Option<String>,
 }
-
-/// Finishes the active Break
-#[derive(Parser)]
-struct FinishBreak {}
 
 /// Report status
 #[derive(Parser)]
@@ -861,11 +853,11 @@ fn cmd_break_start(scheduler: &Scheduler, opts: &StartBreak, pid: u32, verbose: 
             }
         }
     };
-    let br3ak = Schedulable::new(pid, Kind::Break, duration);
+    let bk = Schedulable::new(pid, Kind::Break, duration);
     if verbose {
-        println!("Starting {}", br3ak);
+        println!("Starting {}", bk);
     }
-    match scheduler.run(br3ak, opts.force) {
+    match scheduler.run(bk, opts.force) {
         Ok(completed_break) => {
             if verbose {
                 println!("\n{}", completed_break);
@@ -1116,42 +1108,34 @@ fn format_timeline(s: &Schedulable) -> String {
 
     if action == "running" {
         if s.interruptions > 0 {
-            let noun = if s.interruptions == 1 {
-                "interruption"
-            } else {
-                "interruptions"
-            };
             format!(
                 "running for {} and {} {}",
-                duration_str, s.interruptions, noun
+                duration_str,
+                s.interruptions,
+                rustomato::interruption_noun(s.interruptions)
             )
         } else {
             format!("running for {}", duration_str)
         }
     } else if action == "stale" {
         if s.interruptions > 0 {
-            let noun = if s.interruptions == 1 {
-                "interruption"
-            } else {
-                "interruptions"
-            };
             format!(
                 "stale after {} and {} {}",
-                duration_str, s.interruptions, noun
+                duration_str,
+                s.interruptions,
+                rustomato::interruption_noun(s.interruptions)
             )
         } else {
             format!("stale after {}", duration_str)
         }
     } else {
         if s.interruptions > 0 {
-            let noun = if s.interruptions == 1 {
-                "interruption"
-            } else {
-                "interruptions"
-            };
             format!(
                 "{} after {} and {} {}",
-                action, duration_str, s.interruptions, noun
+                action,
+                duration_str,
+                s.interruptions,
+                rustomato::interruption_noun(s.interruptions)
             )
         } else {
             format!("{} after {}", action, duration_str)
