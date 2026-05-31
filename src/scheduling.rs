@@ -1,7 +1,7 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
 use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
-use pbr::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fmt;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -605,15 +605,20 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
     let (result_tx, result_rx) = channel::<bool>();
 
     // Show the progress bar only when attached to a terminal (stderr)
-    let mut pb = std::io::stderr().is_terminal().then(|| {
-        let mut bar = ProgressBar::new((60 * duration) as u64);
-        bar.show_speed = false;
-        bar.show_counter = false;
-        bar.show_time_left = false;
-        bar.show_tick = false;
-        bar.show_percent = false;
+    let pb = std::io::stderr().is_terminal().then(|| {
+        let bar = ProgressBar::new((60 * duration) as u64);
+        bar.set_style(
+            ProgressStyle::with_template("{msg} [{wide_bar}]")
+                .unwrap()
+                .progress_chars("=> "),
+        );
         bar
     });
+
+    let label = match kind {
+        Kind::Pomodoro => "Pomodoro",
+        Kind::Break => "Break",
+    };
 
     thread::spawn({
         move || {
@@ -622,6 +627,9 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
 
             loop {
                 if start.elapsed() >= total {
+                    if let Some(ref pb) = pb {
+                        pb.finish_and_clear();
+                    }
                     let _ = result_tx.send(false);
                     return;
                 }
@@ -633,19 +641,18 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
                 let rm = remaining.as_secs() / 60;
                 let rs = remaining.as_secs() % 60;
 
-                if let Some(ref mut pb) = pb {
-                    let label = match kind {
-                        Kind::Pomodoro => "Pomodoro",
-                        Kind::Break => "Break",
-                    };
-                    pb.message(&format!(
-                        "{}  {:02}:{:02} / {:02}:{:02} ",
+                if let Some(ref pb) = pb {
+                    pb.set_message(format!(
+                        "{} {:02}:{:02} / {:02}:{:02}",
                         label, em, es, rm, rs,
                     ));
-                    pb.set(elapsed.as_secs());
+                    pb.set_position(elapsed.as_secs());
                 }
 
                 if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
+                    if let Some(ref pb) = pb {
+                        pb.finish_and_clear();
+                    }
                     let _ = result_tx.send(true);
                     return;
                 }

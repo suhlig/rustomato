@@ -379,5 +379,4 @@ cargo release patch
 
 # TODO
 
-*  When resizing due to SIGWINCH, shall we clear the progress bar and redraw it? Right now we add another line with the new size.
 * Does a CSV export of pomodori and breaks make sense for externally created reports? Is JSON better, or both?
