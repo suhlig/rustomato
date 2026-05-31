@@ -1,9 +1,5 @@
 name: Release
-
-on:
-  push:
-    tags: ["v*"]
-
+on: {push: {tags: ["v*"]}}
 jobs:
   build:
     strategy:
@@ -24,13 +20,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
+        with: {targets: "${{ matrix.target }}"}
       - uses: Swatinem/rust-cache@v2
-
       - name: Install musl-tools (Linux musl targets)
         if: contains(matrix.target, 'musl')
         run: |
@@ -39,31 +31,25 @@ jobs:
           # Tell the cc crate (used by rusqlite's bundled SQLite) to use musl-gcc
           TARGET_CC_VAR="CC_$(echo ${{ matrix.target }} | tr - _)"
           echo "$TARGET_CC_VAR=musl-gcc" >> "$GITHUB_ENV"
-
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-
       - name: Compress binary
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../${{ matrix.asset }} rustomato
-
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
-
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
-
       - name: Extract changelog
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -72,17 +58,14 @@ jobs:
             found && $0 ~ "^## \\[" { exit }
             found { print }
           ' CHANGELOG.md > release-notes.md
-
       - name: Compute SHA256
         id: sha256
         run: |
           echo "darwin_arm64=$(sha256sum artifacts/rustomato-darwin-arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-
       - uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*.tar.gz
           body_path: release-notes.md
-
       - name: Bump Homebrew Formula
         uses: mislav/bump-homebrew-formula-action@v4.1
         with:
@@ -90,5 +73,4 @@ jobs:
           homebrew-tap: suhlig/homebrew-tap
           download-url: https://github.com/suhlig/rustomato/releases/download/${{ github.ref_name }}/rustomato-darwin-arm64.tar.gz
           download-sha256: ${{ steps.sha256.outputs.darwin_arm64 }}
-        env:
-          COMMITTER_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        env: {COMMITTER_TOKEN: "${{ secrets.TAP_GITHUB_TOKEN }}"}
