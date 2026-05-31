@@ -90,7 +90,7 @@ struct StartPomodoro {
 #[derive(Parser)]
 struct FinishPomodoro {}
 
-/// Marks the active Pomodoro as interrupted
+/// Marks a Pomodoro as interrupted
 #[derive(Parser)]
 struct InterruptPomodoro {
     /// Whether the interruption is internal (self-inflicted) or external (environmental)
@@ -100,6 +100,10 @@ struct InterruptPomodoro {
     /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
     #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
     target: Option<String>,
+
+    /// Shorthand: -1..-9 for recent finished pomodori. Conflicts with --target.
+    #[clap(allow_hyphen_values = true)]
+    index: Option<String>,
 }
 
 /// Log an externally completed pomodoro
@@ -126,6 +130,7 @@ struct CancelPomodoro {}
 #[derive(Parser)]
 struct AnnotatePomodoro {
     /// The annotation text. Reads from STDIN if not provided.
+    #[clap(allow_hyphen_values = true)]
     words: Vec<String>,
 
     /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
@@ -168,6 +173,7 @@ struct CancelBreak {}
 #[derive(Parser)]
 struct AnnotateBreak {
     /// The annotation text. Reads from STDIN if not provided.
+    #[clap(allow_hyphen_values = true)]
     words: Vec<String>,
 
     /// Target: a UUID prefix, -1..-9 for recent finished pomodori, or a timestamp (HH:MM / RFC 3339)
@@ -472,9 +478,14 @@ fn cmd_pomodoro_interrupt(scheduler: &Scheduler, opts: &InterruptPomodoro, verbo
             process::exit(1);
         }
     };
-    let result = match opts.target.as_deref() {
-        Some(t) => scheduler.interrupt_target(kind, t),
-        None => scheduler.interrupt(kind),
+    let result = match (&opts.target, &opts.index) {
+        (Some(_), Some(_)) => {
+            eprintln!("Error: cannot use both --target and a positional index.");
+            process::exit(1);
+        }
+        (Some(t), None) => scheduler.interrupt_target(kind, t),
+        (None, Some(idx)) => scheduler.interrupt_target(kind, idx),
+        (None, None) => scheduler.interrupt(kind),
     };
     match result {
         Ok(interrupted) => {
@@ -557,7 +568,28 @@ fn cmd_pomodoro_log(scheduler: &Scheduler, opts: &LogPomodoro, verbose: bool) {
 }
 
 fn cmd_annotate(scheduler: &Scheduler, words: &[String], target: Option<&str>, verbose: bool) {
-    let text = annotation_text(words);
+    // If no explicit --target, check if the first word is a negative-index
+    // shorthand (-1..=-9) and use it as the target.
+    let (resolved_target, words_for_text): (Option<String>, &[String]) =
+        match (target, words.first()) {
+            (Some(_), Some(w))
+                if w.starts_with('-')
+                    && w.len() > 1
+                    && w[1..].chars().all(|c| c.is_ascii_digit()) =>
+            {
+                eprintln!("Error: cannot use both --target and a positional index.");
+                process::exit(1);
+            }
+            (None, Some(w))
+                if w.starts_with('-')
+                    && w.len() > 1
+                    && w[1..].chars().all(|c| c.is_ascii_digit()) =>
+            {
+                (Some(w.clone()), &words[1..])
+            }
+            _ => (target.map(|s| s.to_string()), words),
+        };
+    let text = annotation_text(words_for_text);
     if text.is_empty() {
         eprintln!("Error: annotation text is empty.");
         process::exit(1);
@@ -565,7 +597,7 @@ fn cmd_annotate(scheduler: &Scheduler, words: &[String], target: Option<&str>, v
     if verbose {
         println!("Annotating with '{}'", text);
     }
-    let result = match target {
+    let result = match resolved_target.as_deref() {
         Some(t) => scheduler.annotate_target(&text, t),
         None => scheduler.annotate(&text),
     };

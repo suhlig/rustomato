@@ -347,5 +347,5 @@ cargo release patch
 # TODO
 
 * Show progress bar only when attached to a terminal
-  - Also need to react to SIGWINCH to resize the progress bar
+  - When resizing due to SIGWINCH, shall we clear the progress bar and redraw it? Right now we add another line with the new size.
 * Does a CSV export of pomodori and breaks make sense for externally created reports?
