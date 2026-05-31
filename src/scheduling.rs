@@ -38,7 +38,6 @@ pub enum SchedulingError {
     AlreadyRunning(u32),
     HookRejected,
     NoActiveSchedulable,
-    NoFinishedPomodoro,
     NothingToAnnotate,
     NothingToCancel,
     CannotResolveTarget(String),
@@ -61,12 +60,7 @@ impl fmt::Display for SchedulingError {
             SchedulingError::NoActiveSchedulable => {
                 write!(f, "nothing active to interrupt")
             }
-            SchedulingError::NoFinishedPomodoro => {
-                write!(
-                    f,
-                    "a break is active but there is no finished pomodoro to interrupt"
-                )
-            }
+
             SchedulingError::NothingToAnnotate => {
                 write!(f, "nothing active or previously done to annotate")
             }
@@ -154,25 +148,13 @@ impl Scheduler {
         Ok(saved)
     }
 
-    /// Record an interruption on the active pomodoro, or on the most recently finished
-    /// pomodoro if a break is active.
+    /// Record an interruption. Uses the unified target resolution:
+    /// tries the active pomodoro first (`0`), then falls back to
+    /// the most recent pomodoro (`-1`).
     pub fn interrupt(&self, kind: InterruptionKind) -> Result<Schedulable, SchedulingError> {
-        let active = self
-            .repo
-            .active()
-            .map_err(|_| SchedulingError::ExecutionError)?;
-
-        let target = match active {
-            Some(s) if s.kind == Kind::Pomodoro => s,
-            Some(_) => {
-                // Break is active, find most recently finished pomodoro
-                self.repo
-                    .most_recently_finished_pomodoro()
-                    .map_err(|_| SchedulingError::ExecutionError)?
-                    .ok_or(SchedulingError::NoFinishedPomodoro)?
-            }
-            None => return Err(SchedulingError::NoActiveSchedulable),
-        };
+        let target = self
+            .resolve_target("0", Some(Kind::Pomodoro))
+            .or_else(|_| self.resolve_target("-1", Some(Kind::Pomodoro)))?;
 
         // Run before-interrupt hook
         self.run_hook_with(HookEvent::BeforeInterruptPomodoro, &target, |ctx| {
@@ -210,7 +192,7 @@ impl Scheduler {
         kind: InterruptionKind,
         raw_target: &str,
     ) -> Result<Schedulable, SchedulingError> {
-        let target = self.resolve_target(raw_target)?;
+        let target = self.resolve_target(raw_target, Some(Kind::Pomodoro))?;
 
         if target.kind != Kind::Pomodoro {
             return Err(SchedulingError::CannotResolveTarget(format!(
@@ -345,37 +327,60 @@ impl Scheduler {
     }
 
     /// Resolve a `--target` specifier to a `Schedulable`, then annotate it.
-    ///
-    /// Accepts:
-    /// - `-N` (1..=9): the Nth most recently finished pomodoro
-    /// - A UUID prefix (abbreviated)
-    /// - A timestamp (HH:MM or RFC 3339) that falls within a schedulable's time range
+    /// `kind` filters which kind of schedulable `-N` resolves to.
     pub fn annotate_target(
         &self,
         text: &str,
         raw_target: &str,
+        kind: Option<Kind>,
     ) -> Result<Annotation, SchedulingError> {
-        let target = self.resolve_target(raw_target)?;
+        let target = self.resolve_target(raw_target, kind)?;
         self.save_annotation_for(&target, text)
     }
 
     /// Resolve a target string to a Schedulable.
-    pub fn resolve_target(&self, raw: &str) -> Result<Schedulable, SchedulingError> {
-        // 1. Negative index -N (1..=9): Nth most recently finished pomodoro
+    ///
+    /// - `"0"` → entry with a PID (active or stale). Error if none.
+    /// - `"-N"` (1..=9) → Nth most recently started, optionally filtered by `kind`.
+    /// - Otherwise tries HH:MM, RFC 3339, then UUID prefix (unchanged).
+    pub fn resolve_target(
+        &self,
+        raw: &str,
+        kind: Option<Kind>,
+    ) -> Result<Schedulable, SchedulingError> {
+        // 0 → entry with a PID (active or stale)
+        if raw == "0" {
+            let active = self
+                .repo
+                .active()
+                .map_err(|_| SchedulingError::ExecutionError)?
+                .ok_or(SchedulingError::NoActiveSchedulable)?;
+            if let Some(k) = kind
+                && active.kind != k
+            {
+                return Err(SchedulingError::CannotResolveTarget(format!(
+                    "active entry is a {}, not {}",
+                    active.kind, k
+                )));
+            }
+            return Ok(active);
+        }
+
+        // -N (1..=9): Nth most recently started, optionally filtered by kind.
+        // Excludes the active entry (which has its own target `0`), so that
+        // `-1` always means "the one before the currently running one".
         if let Some(n) = parse_negative_index(raw) {
+            let exclude = self.repo.active().ok().flatten().map(|s| s.uuid);
             return self
                 .repo
-                .nth_most_recently_finished_pomodoro(n)
+                .nth_most_recently_started(n, kind, exclude)
                 .map_err(|_| SchedulingError::ExecutionError)?
                 .ok_or_else(|| {
-                    SchedulingError::CannotResolveTarget(format!(
-                        "no finished pomodoro at position -{}",
-                        n
-                    ))
+                    SchedulingError::CannotResolveTarget(format!("no entry at position -{}", n))
                 });
         }
 
-        // 2. HH:MM timestamp — interpret as today at that time
+        // HH:MM timestamp — interpret as today at that time
         if let Ok(ts) = parse_hhmm(raw)
             && let Some(s) = self
                 .repo
@@ -385,7 +390,7 @@ impl Scheduler {
             return Ok(s);
         }
 
-        // 3. RFC 3339 / ISO 8601 timestamp
+        // RFC 3339 / ISO 8601 timestamp
         if let Ok(ts) = super::parse_timestamp(raw)
             && let Some(s) = self
                 .repo
@@ -395,7 +400,7 @@ impl Scheduler {
             return Ok(s);
         }
 
-        // 4. UUID prefix (abbreviated or full)
+        // UUID prefix (abbreviated or full)
         if let Ok(s) = self.repo.find_by_uuid_prefix(raw) {
             return Ok(s);
         }

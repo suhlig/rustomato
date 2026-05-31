@@ -612,7 +612,7 @@ fn cmd_annotate(
         println!("Annotating with '{}'", text);
     }
     let result = match resolved_target.as_deref() {
-        Some(t) => scheduler.annotate_target(&text, t),
+        Some(t) => scheduler.annotate_target(&text, t, kind),
         None => match kind {
             Some(k) => scheduler.annotate_for_kind(&text, k),
             None => scheduler.annotate(&text),
@@ -778,7 +778,7 @@ fn cmd_show(db_url: &Url, opts: &ShowCommand) {
         true, // no-hooks
     );
 
-    let schedulable = match sched.resolve_target(&opts.uuid) {
+    let schedulable = match sched.resolve_target(&opts.uuid, None) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Error: {}.", e);

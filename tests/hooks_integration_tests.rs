@@ -301,7 +301,11 @@ mod hooks_integration {
         let sched = scheduler(dir.path());
 
         let result = sched.interrupt(InterruptionKind::Internal);
-        assert_matches!(result, Err(SchedulingError::NoActiveSchedulable));
+        // `0` fails (nothing active), `-1` fallback fails (no pomodori)
+        assert_matches!(
+            result,
+            Err(SchedulingError::CannotResolveTarget(ref msg)) if msg.contains("no entry at position -1")
+        );
     }
 
     #[test]
@@ -349,7 +353,12 @@ mod hooks_integration {
         sched.repo().save(&brk).expect("saving break");
 
         let result = sched.interrupt(InterruptionKind::Internal);
-        assert_matches!(result, Err(SchedulingError::NoFinishedPomodoro));
+        // Active is a break (kind mismatch on `0`), and there's no pomodoro
+        // for `-1` fallback, so we get CannotResolveTarget.
+        assert_matches!(
+            result,
+            Err(SchedulingError::CannotResolveTarget(ref msg)) if msg.contains("no entry at position -1")
+        );
     }
 
     #[test]

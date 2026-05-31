@@ -297,6 +297,45 @@ impl Repository {
         }
     }
 
+    /// Find the Nth most recently started schedulable, optionally filtered by kind.
+    /// n = 1 is the most recent, n = 2 the second most recent, etc.
+    /// Orders by `started_at DESC` and returns entries in any status
+    /// (active, finished, cancelled, or stale).
+    ///
+    /// When `exclude` is `Some(uuid)`, that entry is skipped — used by `-N`
+    /// targets so they never return the currently active entry (which has
+    /// its own target `0`).
+    pub fn nth_most_recently_started(
+        &self,
+        n: u32,
+        kind: Option<Kind>,
+        exclude: Option<SqlUuid>,
+    ) -> Result<Option<Schedulable>, PersistenceError> {
+        let offset = n.saturating_sub(1);
+        let kind_param: Option<String> = kind.map(|k| k.to_string());
+        let exclude_param: Option<String> = exclude.map(|u| u.to_string());
+        let mut stmt = self
+            .db
+            .prepare(
+                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+                 FROM schedulables \
+                 WHERE (?1 IS NULL OR kind = ?1) \
+                   AND (?2 IS NULL OR uuid != ?2) \
+                 ORDER BY started_at DESC \
+                 LIMIT 1 OFFSET ?3",
+            )
+            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
+
+        match stmt.query_row(
+            params![kind_param, exclude_param, offset],
+            row_to_schedulable,
+        ) {
+            Ok(val) => Ok(Some(val)),
+            Err(QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(PersistenceError::CannotFind(format!("{}", e))),
+        }
+    }
+
     /// Find the Nth most recently finished pomodoro across all time.
     /// n = 1 is the most recent, n = 2 the second most recent, etc.
     pub fn nth_most_recently_finished_pomodoro(

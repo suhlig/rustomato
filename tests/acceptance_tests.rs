@@ -284,7 +284,7 @@ mod acceptance_tests {
             .assert()
             .failure()
             .code(predicate::eq(1))
-            .stderr(predicate::str::contains("nothing active to interrupt"));
+            .stderr(predicate::str::contains("no entry at position -1"));
     }
 
     #[test]

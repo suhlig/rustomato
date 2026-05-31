@@ -234,6 +234,141 @@ mod integration_tests {
         assert_eq!(result.finished_at, 4000);
     }
 
+    // --- nth_most_recently_started ------------------------------------------
+
+    #[test]
+    fn nth_most_recently_started_none_when_empty() {
+        let repo = Repository::new("file::memory:");
+        let result = repo
+            .nth_most_recently_started(1, None, None)
+            .expect("querying");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn nth_most_recently_started_returns_by_started_at() {
+        let repo = Repository::new("file::memory:");
+
+        // First pomodoro (oldest, started_at = 1000)
+        let mut pom1 = Schedulable::new(1, Kind::Pomodoro, 25);
+        pom1.started_at = 1000;
+        repo.save(&pom1).expect("saving pom1");
+        pom1.finished_at = 2000;
+        repo.save(&pom1).expect("finishing pom1");
+
+        // Second entry — a break (started_at = 3000)
+        let mut brk = Schedulable::new(2, Kind::Break, 5);
+        brk.started_at = 3000;
+        repo.save(&brk).expect("saving break");
+        brk.finished_at = 3300;
+        repo.save(&brk).expect("finishing break");
+
+        // Third pomodoro (most recently started, started_at = 5000)
+        let mut pom3 = Schedulable::new(3, Kind::Pomodoro, 25);
+        pom3.started_at = 5000;
+        repo.save(&pom3).expect("saving pom3");
+        // leave pom3 active (no finished_at)
+
+        // no kind filter: n=1 → most recently started = pom3 (active, started_at=5000)
+        let result = repo
+            .nth_most_recently_started(1, None, None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 5000);
+        assert_eq!(result.kind, Kind::Pomodoro);
+
+        // no kind filter: n=2 → second most recently started = break (started_at=3000)
+        let result = repo
+            .nth_most_recently_started(2, None, None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 3000);
+        assert_eq!(result.kind, Kind::Break);
+
+        // no kind filter: n=3 → third most recently started = pom1 (started_at=1000)
+        let result = repo
+            .nth_most_recently_started(3, None, None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 1000);
+        assert_eq!(result.kind, Kind::Pomodoro);
+    }
+
+    #[test]
+    fn nth_most_recently_started_filters_by_kind() {
+        let repo = Repository::new("file::memory:");
+
+        // Pomodoro (started_at = 1000)
+        let mut pom = Schedulable::new(1, Kind::Pomodoro, 25);
+        pom.started_at = 1000;
+        repo.save(&pom).expect("saving pom");
+        pom.finished_at = 2000;
+        repo.save(&pom).expect("finishing pom");
+
+        // Break (started_at = 3000) — more recent, but different kind
+        let mut brk = Schedulable::new(2, Kind::Break, 5);
+        brk.started_at = 3000;
+        repo.save(&brk).expect("saving break");
+        brk.finished_at = 3300;
+        repo.save(&brk).expect("finishing break");
+
+        // Filtered to break: n=1 → the break
+        let result = repo
+            .nth_most_recently_started(1, Some(Kind::Break), None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 3000);
+        assert_eq!(result.kind, Kind::Break);
+
+        // Filtered to pomodoro: n=1 → the pomodoro (skips the break)
+        let result = repo
+            .nth_most_recently_started(1, Some(Kind::Pomodoro), None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 1000);
+        assert_eq!(result.kind, Kind::Pomodoro);
+
+        // Filtered to pomodoro: n=2 → no more pomodori
+        let result = repo
+            .nth_most_recently_started(2, Some(Kind::Pomodoro), None)
+            .expect("querying");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn nth_most_recently_started_includes_active() {
+        let repo = Repository::new("file::memory:");
+
+        // Finished pomodoro (started_at = 1000)
+        let mut pom1 = Schedulable::new(1, Kind::Pomodoro, 25);
+        pom1.started_at = 1000;
+        repo.save(&pom1).expect("saving pom1");
+        pom1.finished_at = 2000;
+        repo.save(&pom1).expect("finishing pom1");
+
+        // Active pomodoro (started_at = 3000) — more recent, still running
+        let mut pom2 = Schedulable::new(2, Kind::Pomodoro, 25);
+        pom2.started_at = 3000;
+        repo.save(&pom2).expect("saving pom2");
+        // no finished_at → still active
+
+        // n=1 should return the active one (most recently started)
+        let result = repo
+            .nth_most_recently_started(1, Some(Kind::Pomodoro), None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 3000);
+        assert_eq!(result.finished_at, 0); // still active
+
+        // n=2 should return the finished one
+        let result = repo
+            .nth_most_recently_started(2, Some(Kind::Pomodoro), None)
+            .expect("querying")
+            .expect("should find one");
+        assert_eq!(result.started_at, 1000);
+        assert_eq!(result.finished_at, 2000);
+    }
+
     // --- find_by_uuid_prefix --------------------------------------------------
 
     #[test]

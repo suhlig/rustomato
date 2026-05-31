@@ -55,24 +55,53 @@ Pass `--duration` explicitly to override the auto-calculated duration.
 
 # Target Selection
 
-By default, a command refers to the **active** pomodoro or break. If nothing is active, it falls back to the most recently ended entry.
+Many commands accept a **target** to determine which pomodoro or break to act on. The same resolution logic is used whether the target comes from a positional argument, `--target`, or a shortcut like `-1`.
 
-Use `--target` to annotate or interrupt a specific entry:
+## Relative targets
 
-| Target format | Example | Description |
+| Target | Resolves to |
+|---|---|
+| `0` | The entry with a PID — the currently running (or stale) one. Error if none. |
+| `-1` | The most recently started entry. Skips the active entry if present. |
+| `-2` … `-9` | The second, third, … ninth most recently started entry. |
+
+When a command has an implicit **kind context** (`pomodoro` or `break`), `-N` only counts entries of that kind. For example, `rustomato pomodoro annotate -1` finds the most recently started pomodoro, skipping any breaks.
+
+### Default (no explicit target)
+
+| Condition | Behaviour |
+|---|---|
+| Something is running (or stale) | Targets the active entry, as if `0` were given. |
+| Nothing is running and no stale entry | Targets the most recent entry, as if `-1` were given. |
+
+Commands with kind-specific constraints may override this default (for example, `interrupt` targets the active pomodoro first, falling back to the most recent pomodoro, but never targets a break).
+
+## Other target formats
+
+These are also accepted by `--target` and `rustomato show`:
+
+| Format | Example | Description |
 |---|---|---|
-| UUID prefix | `--target a1b2c3` | An abbreviated or full UUID (minimum 6 chars) |
-| Negative index | `--target -1` | The most recently finished pomodoro (`-2` = second most recent, up to `-9`) |
-| Today's time | `--target 14:30` | The pomodoro or break running at that time today |
-| RFC 3339 | `--target 2026-05-30T14:30:00` | The pomodoro or break running at that absolute time |
+| UUID prefix | `a1b2c3` | An abbreviated or full UUID (minimum 6 chars). |
+| Today's time | `14:30` | The entry running at that time today. |
+| RFC 3339 | `2026-05-30T14:30:00` | The entry running at that absolute time. |
 
-Targets are resolved using the same logic as `rustomato show <uuid>`, so any identifier that works with `show` also works with `--target`.
+## Examples
+
+```
+rustomato pomodoro annotate "review PR"      # annotate the active entry (or most recent pomodoro)
+rustomato pomodoro annotate 0 "review PR"    # same, explicitly
+rustomato pomodoro annotate -1 "review PR"    # most recently started pomodoro (skips active)
+rustomato show 0                              # details of the active entry
+rustomato show -1                              # details of the most recent entry (any kind)
+rustomato break annotate -1 "good break"      # most recently started break
+rustomato pomodoro interrupt -1               # record interrupt on most recent pomodoro
 
 # Interrupts
 
 When you call `rustomato pomodoro interrupt`, the current pomodoro's interruption counter is incremented by one. The pomodoro **continues running** -- an interrupt does not cancel or finish it.
 
-If no pomodoro is active but a break is running, the interruption is recorded on the most recently finished pomodoro.
+`interrupt` uses the unified target resolution: tries the active pomodoro first (`0`), then falls back to the most recent pomodoro (`-1`). If neither exists, it errors.
 
 Interrupt hooks receive two additional environment variables:
 
