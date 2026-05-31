@@ -23,6 +23,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "V7__interrupt_log",
         include_str!("../migrations/V7__interrupt_log.sql"),
     ),
+    (
+        "V8__add_cascade_delete",
+        include_str!("../migrations/V8__add_cascade_delete.sql"),
+    ),
 ];
 
 pub fn run(conn: &Connection) {

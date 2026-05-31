@@ -18,6 +18,7 @@ pub enum PersistenceError {
     CannotFind(String),
     AlreadyRunning(u32),
     OverlappingTimeRange,
+    CannotDelete(String),
 }
 
 impl fmt::Display for PersistenceError {
@@ -30,6 +31,7 @@ impl fmt::Display for PersistenceError {
             PersistenceError::OverlappingTimeRange => {
                 write!(f, "Time range overlaps with an existing entry (Rule #1)")
             }
+            PersistenceError::CannotDelete(e) => write!(f, "Cannot delete: {}", e),
         }
     }
 }
@@ -656,6 +658,27 @@ impl Repository {
                     Err(e) => {Err(PersistenceError::CannotUpdate(format!("{}", e)))}
                 }
             }
+        }
+    }
+
+    /// Delete a schedulable by UUID and return its data. Annotations and interrupt_log
+    /// entries are removed via ON DELETE CASCADE.
+    pub fn delete(&self, uuid: SqlUuid) -> Result<Schedulable, PersistenceError> {
+        let uuid_s = uuid.to_string();
+
+        // Fetch the schedulable first so we can return it
+        let schedulable = self.find_by_uuid(uuid)?;
+
+        match self
+            .db
+            .execute("DELETE FROM schedulables WHERE uuid = ?1", params![uuid_s])
+        {
+            Ok(rows) if rows > 0 => Ok(schedulable),
+            Ok(_) => Err(PersistenceError::CannotDelete(format!(
+                "schedulable {} not found",
+                uuid_s
+            ))),
+            Err(e) => Err(PersistenceError::CannotDelete(format!("{}", e))),
         }
     }
 }

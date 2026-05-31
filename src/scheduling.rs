@@ -1,6 +1,6 @@
 use super::hooks::{self, HookContext, HookEvent};
 use super::persistence::{PersistenceError, Repository};
-use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid};
+use super::{Annotation, InterruptLog, InterruptionKind, Kind, Schedulable, SqlUuid, Status};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fmt;
 use std::io::IsTerminal;
@@ -336,6 +336,42 @@ impl Scheduler {
                 Ok(target)
             }
         }
+    }
+
+    /// Delete a specific pomodoro or break identified by `--target`.
+    ///
+    /// Hard-deletes the entry from the database (annotations and interrupt_log
+    /// are removed via ON DELETE CASCADE).
+    ///
+    /// Returns an error if the target is currently active (use cancel + delete
+    /// instead, or wait for it to finish).
+    pub fn delete_target(&self, raw_target: &str) -> Result<Schedulable, SchedulingError> {
+        let target = self.resolve_target(raw_target, None)?;
+
+        // Disallow deleting the currently active entry
+        if matches!(target.status(), Status::Active) {
+            return Err(SchedulingError::CannotResolveTarget(
+                "cannot delete an active entry; cancel it first".to_string(),
+            ));
+        }
+
+        let before_event = match target.kind {
+            Kind::Pomodoro => HookEvent::BeforeDeletePomodoro,
+            Kind::Break => HookEvent::BeforeDeleteBreak,
+        };
+        self.run_hook(before_event, &target)?;
+
+        self.repo
+            .delete(target.uuid)
+            .map_err(|_| SchedulingError::ExecutionError)?;
+
+        let after_event = match target.kind {
+            Kind::Pomodoro => HookEvent::AfterDeletePomodoro,
+            Kind::Break => HookEvent::AfterDeleteBreak,
+        };
+        self.run_hook_after(after_event, &target);
+
+        Ok(target)
     }
 
     /// Access the underlying repository (used in tests).

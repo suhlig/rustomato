@@ -17,7 +17,7 @@ Rustomato is a command-line Pomodoro timer written in Rust. It manages pomodori 
 | `hooks.rs` | Hook discovery, execution, timeout, environment construction |
 | `report.rs` | Day/week/month/last-day/interruptions report generation |
 | `export.rs` | CSV export of pomodori and breaks with annotations as a JSON column |
-| `migration.rs` | Schema migration runner (V1–V7) |
+| `migration.rs` | Schema migration runner (V1–V8) |
 
 ---
 
@@ -228,6 +228,27 @@ Creates sample non-executable hook scripts for all events. They exit 0. The user
 
 ---
 
+## Delete Behaviour
+
+`rustomato pomodoro delete --target <uuid>` and `rustomato break delete --target <uuid>` **hard-delete** a past entry from the database, including its annotations and interrupt log entries (via `ON DELETE CASCADE`).
+
+### Design rules
+
+1. **Cannot delete the currently active entry** — you must cancel or finish it first. This prevents accidental deletion of a running session.
+2. **Requires an explicit target** — unlike `cancel`, which falls back to the active entry, `delete` always requires `--target` or a positional index (`-1`..`-9`). There is no safe default for deletion.
+3. **Hard delete, not soft delete** — the row is removed entirely. This is intentional: a data-entry mistake (wrong time, wrong annotation target) is not a real Pomodoro event and should not live on in the journal.
+4. **Reuses `--target` resolution** — the same UUID prefix, negative index (`-1`..`-9`), and timestamp (`HH:MM` / RFC 3339) shortcuts work as they do for `cancel --target`.
+5. **Hooks** — `BeforeDeletePomodoro` / `AfterDeletePomodoro` and `BeforeDeleteBreak` / `AfterDeleteBreak` events fire around the deletion. Before-hooks can abort the operation.
+6. **Cascade** — the `annotations` and `interrupt_log` foreign keys gained `ON DELETE CASCADE` in migration V8. Deleting a schedulable automatically removes its child rows. This is transparent to the application.
+
+### Use cases
+
+- **Wrong annotation target**: annotate the correct entry instead, then delete the old annotation (or delete the whole entry if it was created by mistake).
+- **Wrong time logged**: delete the mis-logged entry and re-log it with `pomodoro log --started-at ... --duration ...` or `break log ...`.
+- **Duplicate entries**: delete the duplicate.
+
+---
+
 ## CLI Structure
 
 Uses `clap` with derive macros.
@@ -244,11 +265,13 @@ rustomato
     annotate [TEXT...]
     log      [--started-at TS] [--finished-at TS] [--duration MIN]
     cancel   [--target TARGET]
+    delete   --target TARGET
   break
     start    [--duration MIN] [--force]
     log      [--started-at TS] [--finished-at TS] [--duration MIN]
     annotate [TEXT...]
     cancel   [--target TARGET]
+    delete   --target TARGET
   report
     day    [--date YYYY-MM-DD]
     week   [--date YYYY-MM-DD]

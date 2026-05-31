@@ -211,5 +211,4 @@ cargo release patch
 
 # TODO
 
-* Which kind of delete behavior makes sense? Sometimes, a mistake (like the wrong pomodoro was annotated, or the wrong time was used) needs to be corrected.
-* When the computer sleeps during a pomodoro, it miscalculates the elapsed time. Review the code and suggest fixes.
+* When the computer sleeps during a pomodoro or break, it miscalculates the elapsed time. Review the code and suggest fixes. Not sure if there are any.

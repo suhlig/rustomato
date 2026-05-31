@@ -51,6 +51,10 @@ pub enum HookEvent {
     AfterFinishBreak,
     BeforeLogBreak,
     AfterLogBreak,
+    BeforeDeletePomodoro,
+    AfterDeletePomodoro,
+    BeforeDeleteBreak,
+    AfterDeleteBreak,
 }
 
 impl HookEvent {
@@ -77,6 +81,10 @@ impl HookEvent {
             HookEvent::AfterFinishBreak => "after-finish-break",
             HookEvent::BeforeLogBreak => "before-log-break",
             HookEvent::AfterLogBreak => "after-log-break",
+            HookEvent::BeforeDeletePomodoro => "before-delete-pomodoro",
+            HookEvent::AfterDeletePomodoro => "after-delete-pomodoro",
+            HookEvent::BeforeDeleteBreak => "before-delete-break",
+            HookEvent::AfterDeleteBreak => "after-delete-break",
         }
     }
 
@@ -102,6 +110,10 @@ impl HookEvent {
         "after-finish-break",
         "before-log-break",
         "after-log-break",
+        "before-delete-pomodoro",
+        "after-delete-pomodoro",
+        "before-delete-break",
+        "after-delete-break",
     ];
 }
 

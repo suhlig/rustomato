@@ -79,6 +79,7 @@ enum PomodoroCommands {
     Annotate(AnnotatePomodoro),
     Log(LogPomodoro),
     Cancel(CancelPomodoro),
+    Delete(DeletePomodoro),
 }
 
 /// Starts a Pomodoro
@@ -173,6 +174,7 @@ enum BreakCommands {
     Annotate(AnnotateBreak),
     Cancel(CancelBreak),
     Log(LogBreak),
+    Delete(DeleteBreak),
 }
 
 /// Starts a Break
@@ -185,6 +187,30 @@ struct StartBreak {
     /// Cancel whatever may currently be running before starting the Break
     #[clap(short, long)]
     force: bool,
+}
+
+/// Deletes a past pomodoro.
+#[derive(Parser)]
+struct DeletePomodoro {
+    /// Target: a UUID prefix, -1..-9 for recent entries, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
+
+    /// Shorthand: -1..-9 for recent entries. Conflicts with --target.
+    #[clap(allow_hyphen_values = true)]
+    index: Option<String>,
+}
+
+/// Deletes a past break.
+#[derive(Parser)]
+struct DeleteBreak {
+    /// Target: a UUID prefix, -1..-9 for recent entries, or a timestamp (HH:MM / RFC 3339)
+    #[clap(short, long, value_name = "TARGET", allow_hyphen_values = true)]
+    target: Option<String>,
+
+    /// Shorthand: -1..-9 for recent entries. Conflicts with --target.
+    #[clap(allow_hyphen_values = true)]
+    index: Option<String>,
 }
 
 /// Cancel the current Break, or a specific one with --target.
@@ -447,6 +473,12 @@ fn main() {
                 opts.index.as_deref(),
                 verbose,
             ),
+            PomodoroCommands::Delete(ref opts) => cmd_delete(
+                &scheduler,
+                opts.target.as_deref(),
+                opts.index.as_deref(),
+                verbose,
+            ),
         },
         SubCommands::Status(_) => cmd_status(&db_url),
         SubCommands::List(ref opts) => cmd_list(&db_url, opts),
@@ -462,6 +494,12 @@ fn main() {
                 verbose,
             ),
             BreakCommands::Cancel(ref opts) => cmd_cancel(
+                &scheduler,
+                opts.target.as_deref(),
+                opts.index.as_deref(),
+                verbose,
+            ),
+            BreakCommands::Delete(ref opts) => cmd_delete(
                 &scheduler,
                 opts.target.as_deref(),
                 opts.index.as_deref(),
@@ -777,6 +815,33 @@ fn cmd_cancel(scheduler: &Scheduler, target: Option<&str>, index: Option<&str>, 
                 Kind::Pomodoro => process::exit(1),
                 Kind::Break => process::exit(0),
             }
+        }
+        Err(err) => {
+            eprintln!("Error: {}.", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn cmd_delete(scheduler: &Scheduler, target: Option<&str>, index: Option<&str>, verbose: bool) {
+    let result = match (target, index) {
+        (Some(_), Some(_)) => {
+            eprintln!("Error: cannot use both --target and a positional index.");
+            process::exit(1);
+        }
+        (Some(t), None) => scheduler.delete_target(t),
+        (None, Some(idx)) => scheduler.delete_target(idx),
+        (None, None) => {
+            eprintln!("Error: --target or a positional index (-1..-9) is required for delete.");
+            process::exit(1);
+        }
+    };
+    match result {
+        Ok(schedulable) => {
+            if verbose {
+                println!("Deleted {}", schedulable);
+            }
+            process::exit(0);
         }
         Err(err) => {
             eprintln!("Error: {}.", err);
