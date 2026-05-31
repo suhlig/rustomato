@@ -379,4 +379,4 @@ cargo release patch
 
 # TODO
 
-* Does a CSV export of pomodori and breaks make sense for externally created reports? Is JSON better, or both?
+* Which kind of delete behavior makes sense? Sometimes, a mistake (like the wrong pomodoro was annotated, or the wrong time was used) needs to be corrected.
