@@ -211,4 +211,4 @@ cargo release patch
 
 # TODO
 
-* When the computer sleeps during a pomodoro or break, it miscalculates the elapsed time. Review the code and suggest fixes. Not sure if there are any.
+> none at this time

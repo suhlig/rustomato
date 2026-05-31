@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::channel;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{thread, time::Duration, time::Instant};
+use std::{thread, time::Duration};
 
 static CTRLC_INIT: Once = Once::new();
 static CTRLC_PRESSED: AtomicBool = AtomicBool::new(false);
@@ -593,7 +593,13 @@ impl Scheduler {
         }
 
         // --- wait for timer or Ctrl-C ---
-        let cancelled = match waiter(schedulable.duration, schedulable.kind).recv() {
+        let cancelled = match waiter(
+            schedulable.started_at,
+            schedulable.duration,
+            schedulable.kind,
+        )
+        .recv()
+        {
             Ok(cancelled) => cancelled,
             Err(_) => return Err(SchedulingError::ExecutionError),
         };
@@ -658,7 +664,7 @@ impl Drop for CursorGuard {
     }
 }
 
-fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
+fn waiter(started_at: i64, duration: i64, kind: Kind) -> Receiver<bool> {
     init_ctrlc_handler();
     let (result_tx, result_rx) = channel::<bool>();
 
@@ -678,14 +684,15 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
         Kind::Break => "Break",
     };
 
+    let total_secs = duration * 60;
+
     thread::spawn({
         move || {
             let _cursor = CursorGuard::hide();
-            let total = Duration::new((60 * duration) as u64, 0);
-            let start = Instant::now();
 
             loop {
-                if start.elapsed() >= total {
+                let elapsed_secs = (now() - started_at).max(0);
+                if elapsed_secs >= total_secs {
                     if let Some(ref pb) = pb {
                         pb.finish_and_clear();
                     }
@@ -693,19 +700,18 @@ fn waiter(duration: i64, kind: Kind) -> Receiver<bool> {
                     return;
                 }
 
-                let elapsed = start.elapsed();
-                let remaining = total.saturating_sub(elapsed);
-                let em = elapsed.as_secs() / 60;
-                let es = elapsed.as_secs() % 60;
-                let rm = remaining.as_secs() / 60;
-                let rs = remaining.as_secs() % 60;
+                let remaining_secs = total_secs - elapsed_secs;
+                let em = elapsed_secs / 60;
+                let es = elapsed_secs % 60;
+                let rm = remaining_secs / 60;
+                let rs = remaining_secs % 60;
 
                 if let Some(ref pb) = pb {
                     pb.set_message(format!(
                         "{} {:02}:{:02} / {:02}:{:02}",
                         label, em, es, rm, rs,
                     ));
-                    pb.set_position(elapsed.as_secs());
+                    pb.set_position(elapsed_secs as u64);
                 }
 
                 if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
