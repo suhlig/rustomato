@@ -9,10 +9,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
             asset: rustomato-linux-amd64.tar.gz
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04-arm
             asset: rustomato-linux-arm64.tar.gz
           - target: x86_64-apple-darwin
@@ -30,6 +30,15 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Install musl-tools (Linux musl targets)
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          # Tell the cc crate (used by rusqlite's bundled SQLite) to use musl-gcc
+          TARGET_CC_VAR="CC_$(echo ${{ matrix.target }} | tr - _)"
+          echo "$TARGET_CC_VAR=musl-gcc" >> "$GITHUB_ENV"
 
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}

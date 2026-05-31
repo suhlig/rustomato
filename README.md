@@ -1,4 +1,4 @@
-Simple [Pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) timer written in Rust
+`rustomato` is a simple [Pomodoro](https://en.wikipedia.org/wiki/Pomodoro_Technique) timer for the command-line.
 
 # Usage
 
