@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH RUSTOMATO 1 "2026-05-30" "rustomato 1.2.0" "User Commands"
+.TH RUSTOMATO 1 "2026-05-31" "rustomato 2.1.1" "User Commands"
 .SH NAME
 rustomato \- A simple Pomodoro timer for the command line
 .SH SYNOPSIS
@@ -27,7 +27,7 @@ Initialize the rustomato root directory with sample hook scripts.
 \fBrustomato init\fR
 Creates the \fIhooks/\fR subdirectory inside \fB$RUSTOMATO_ROOT\fR
 (or \fI~/.rustomato/hooks/\fR by default) with non-executable sample
-hook scripts for all 18 events. Make scripts executable with
+hook scripts for all 24 events. Make scripts executable with
 \fIchmod +x\fR to enable them.
 .SS "status"
 Show the currently active or most recently finished session.
@@ -57,13 +57,15 @@ Start a pomodoro with the given duration (default: 25 minutes).
 The process blocks until the timer expires or Ctrl-C is pressed.
 .ti +4
 If \fB\-\-force\fR is given, any currently active session is
-force-cancelled (break) or force-finished (pomodoro) before starting.
+force-cancelled (pomodoro) or force-finished (break) before starting.
 .SS "pomodoro interrupt"
 Record an interruption on the active or most recently finished pomodoro.
 .TP
-\fBrustomato pomodoro interrupt\fR [\fB\-\-kind\fR \fIKIND\fR]
+\fBrustomato pomodoro interrupt\fR [\fB\-\-kind\fR \fIKIND\fR] [\fB\-\-target\fR \fITARGET\fR]
 Increment the interruption counter. \fIKIND\fR is \fBinternal\fR
 (default) or \fBexternal\fR. The pomodoro continues running.
+With \fB\-\-target\fR, target a specific past pomodoro instead of the
+active one.
 If a break is active, the interrupt is recorded on the most recently
 finished pomodoro instead.
 .SS "pomodoro annotate"
@@ -83,11 +85,22 @@ At least one of \fB\-\-started-at\fR or \fB\-\-finished-at\fR is
 required. If only one is given, \fB\-\-duration\fR (default: 25) is
 used to compute the other.
 .SS "pomodoro cancel"
-Cancel the currently active pomodoro.
+Cancel the currently active pomodoro, or a specific one with --target.
 .TP
-\fBrustomato pomodoro cancel\fR
+\fBrustomato pomodoro cancel\fR [\fB\-\-target\fR \fITARGET\fR]
 Cancel the active pomodoro and record its cancelled state in the
-database.
+database. With \fB\-\-target\fR, cancel a specific past pomodoro
+identified by UUID prefix, negative index (\fB-1\fR..\fB-9\fR), or
+timestamp (\fBHH:MM\fR / RFC 3339).
+.SS "pomodoro delete"
+Delete a past pomodoro from the database.
+.TP
+\fBrustomato pomodoro delete\fR \fB\-\-target\fR \fITARGET\fR
+Hard-delete a past pomodoro and its associated annotations and
+interrupt log entries. Requires \fB\-\-target\fR or a positional index
+(\fB-1\fR..\fB-9\fR). Cannot delete an active pomodoro \(em cancel it
+first. Useful for correcting data-entry mistakes (wrong time, wrong
+annotation target, duplicates).
 .SS "break start"
 Start a break.
 .TP
@@ -103,11 +116,29 @@ Add an annotation to a break.
 .TP
 \fBrustomato break annotate\fR [\fB\-\-target\fR \fITARGET\fR] [\fITEXT\fR...]
 Same as \fBpomodoro annotate\fR but scoped to breaks.
-.SS "break cancel"
-Cancel the currently active break.
+.SS "break log"
+Log an externally completed break.
 .TP
-\fBrustomato break cancel\fR
-Cancel the active break.
+\fBrustomato break log\fR [\fB\-\-started-at\fR \fITS\fR] [\fB\-\-finished-at\fR \fITS\fR] [\fB\-\-duration\fR \fIMIN\fR]
+Record a break that was completed outside of rustomato. Timestamps
+are in RFC 3339 / ISO 8601 format. At least one of
+\fB\-\-started-at\fR or \fB\-\-finished-at\fR is required. If only
+one is given, \fB\-\-duration\fR (default: 5) is used to compute
+the other.
+.SS "break cancel"
+Cancel the currently active break, or a specific one with --target.
+.TP
+\fBrustomato break cancel\fR [\fB\-\-target\fR \fITARGET\fR]
+Cancel the active break. With \fB\-\-target\fR, finish a specific past
+break (Ctrl-C on a break always finishes it rather than cancelling).
+.SS "break delete"
+Delete a past break from the database.
+.TP
+\fBrustomato break delete\fR \fB\-\-target\fR \fITARGET\fR
+Hard-delete a past break and its associated annotations and interrupt
+log entries. Requires \fB\-\-target\fR or a positional index
+(\fB-1\fR..\fB-9\fR). Cannot delete an active break \(em cancel it
+first.
 .SS "report day"
 Daily productivity report.
 .TP
@@ -142,6 +173,14 @@ Generate shell completions.
 Generate shell completion scripts for \fIbash\fR, \fIzsh\fR,
 \fIfish\fR, \fIpowershell\fR, or \fIelvish\fR. Output is written to
 stdout.
+.SS "export"
+Export pomodori and breaks as CSV.
+.TP
+\fBrustomato export\fR [\fB\-\-from\fR \fIYYYY-MM-DD\fR] [\fB\-\-to\fR \fIYYYY-MM-DD\fR]
+Export all entries in the given date range as CSV to stdout. Each row
+includes the UUID, kind, planned duration, timestamps, status,
+interruption count, elapsed minutes, and annotations as a JSON column.
+Defaults to all entries since the beginning of time until now.
 .SH BREAK DURATION AUTO-CALCULATION
 Following the classic Pomodoro Technique (Cirillo), \fBbreak start\fR
 without \fB\-\-duration\fR automatically picks a duration based on
@@ -193,6 +232,7 @@ BeforeCancelPomodoro;yes
 BeforeInterruptPomodoro;yes
 BeforeLogPomodoro;yes
 BeforeAnnotatePomodoro, BeforeAnnotateBreak;yes
+BeforeDeletePomodoro, BeforeDeleteBreak;yes
 After-* (all above);no
 .TE
 .SS "Hook execution"
