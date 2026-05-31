@@ -16,11 +16,11 @@ $ rustomato break start              # Starts a Break.
 
 1. There must never be more than one pomodoro [XOR](http://en.wikipedia.org/wiki/Xor) break at any given time.
 
-  This is scoped to an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`). The enforcement happens at the database level via a trigger that rejects overlapping time ranges, and at the application level in the scheduler.
+    This is scoped to an instance of the database (as pointed to by `$RUSTOMATO_DATABASE_URL`). The enforcement happens at the database level via a trigger that rejects overlapping time ranges, and at the application level in the scheduler.
 
 1. No action can ever refer to the future.
 
-   When a bare `HH:MM` is given as a timestamp, it is interpreted as **today at that time** if it is in the past or right now, or **yesterday at that time** if the wall-clock time is in the future.
+    When a bare `HH:MM` is given as a timestamp, it is interpreted as **today at that time** if it is in the past or right now, or **yesterday at that time** if the wall-clock time is in the future.
 
 # State Transitions
 
