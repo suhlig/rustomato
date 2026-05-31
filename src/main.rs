@@ -81,7 +81,7 @@ struct StartPomodoro {
     )]
     duration: u8,
 
-    /// Cancel whatever may currently be running before starting the pomodoro
+    /// Cancel whatever may currently be running before starting the Pomodoro
     #[clap(short, long)]
     force: bool,
 }
@@ -106,14 +106,14 @@ struct InterruptPomodoro {
     index: Option<String>,
 }
 
-/// Log an externally completed pomodoro
+/// Log an externally completed Pomodoro
 #[derive(Parser)]
 struct LogPomodoro {
-    /// When the pomodoro started (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
+    /// When the Pomodoro started (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
     #[clap(long, value_name = "TIMESTAMP")]
     started_at: Option<String>,
 
-    /// When the pomodoro finished (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
+    /// When the Pomodoro finished (RFC 3339 / ISO 8601, HH:MM, or Unix timestamp)
     #[clap(long, value_name = "TIMESTAMP")]
     finished_at: Option<String>,
 
@@ -146,7 +146,7 @@ struct AnnotatePomodoro {
     target: Option<String>,
 }
 
-/// Work with a break
+/// Work with a Break
 #[derive(Parser)]
 #[clap(infer_subcommands = true)]
 struct BreakCommand {
@@ -161,14 +161,14 @@ enum BreakCommands {
     Cancel(CancelBreak),
 }
 
-/// Starts a break
+/// Starts a Break
 #[derive(Parser)]
 struct StartBreak {
-    /// How many minutes this break should last (default depends on pomodoro count)
+    /// How many minutes this Break should last (default depends on pomodoro count)
     #[clap(short, long, value_name = "DURATION")]
     duration: Option<u8>,
 
-    /// Cancel whatever may currently be running before starting the break
+    /// Cancel whatever may currently be running before starting the Break
     #[clap(short, long)]
     force: bool,
 }

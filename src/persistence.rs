@@ -627,7 +627,7 @@ impl Repository {
                          if let Ok(option) = self.active() {
                              match option {
                                  Some(existing) => return Err(PersistenceError::AlreadyRunning(existing.pid)),
-                                 None => return Err(PersistenceError::CannotSave(format!("{} could not be inseted as active, but there was no active Pomodoro or break found, either.", s))),
+                                 None => return Err(PersistenceError::CannotSave(format!("{} could not be inserted as active, but there was no active Pomodoro or Break found, either.", s))),
                              }
                          };
                         Err(PersistenceError::CannotSave(format!("{}", e)))
