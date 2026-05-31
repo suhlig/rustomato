@@ -6,7 +6,7 @@ set -euo pipefail
 # Requires: miller, typst, gnuplot, jq
 
 # 1. Export from rustomato (or use example.csv for testing)
-# rustomato export --from 2026-04-20 --to 2026-04-26 >export.csv
+rustomato export --from 2026-04-20 --to 2026-04-26 >export.csv
 
 # 2. Aggregate daily pomodoro counts
 # mlr handles CSV quoting correctly (qsv chokes on the annotations JSON column)

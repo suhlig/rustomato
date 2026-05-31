@@ -1,6 +1,6 @@
 */target
 target
-doc/export/report.pdf
-doc/export/daily_chart.svg
-doc/export/daily_counts.csv
-doc/export/annotations.csv
+doc/export/example/report.pdf
+doc/export/example/daily_chart.svg
+doc/export/example/daily_counts.csv
+doc/export/example/annotations.csv
