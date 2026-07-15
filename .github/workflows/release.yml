@@ -67,7 +67,7 @@ jobs:
           files: artifacts/*.tar.gz
           body_path: release-notes.md
       - name: Bump Homebrew Formula
-        uses: mislav/bump-homebrew-formula-action@v4.1
+        uses: mislav/bump-homebrew-formula-action@v4.2
         with:
           formula-name: rustomato
           homebrew-tap: suhlig/homebrew-tap
