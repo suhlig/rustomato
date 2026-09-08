@@ -2,23 +2,43 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Migrations are embedded into the binary at compile time
+      # (include_str! in src/migration.rs) and applied once by name
+      # (_migrations table). Keep them byte-stable: re-touching an applied
+      # migration would silently change what fresh installs run while
+      # existing databases keep the old SQL, so exclude them from
+      # content-normalizing hooks.
       - id: trailing-whitespace
+        exclude: ^migrations/.*\.sql$
       - id: end-of-file-fixer
+        exclude: ^migrations/.*\.sql$
       - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
       - id: check-added-large-files
+      - id: detect-private-key
+
 
   - repo: local
     hooks:
       - id: cargo-fmt
         name: cargo fmt
-        entry: cargo fmt --all
+        entry: cargo fmt --all --check
         language: system
-        types: [rust]
         pass_filenames: false
+        types: [rust]
 
       - id: cargo-clippy
         name: cargo clippy
         entry: cargo clippy --all-targets -- -D warnings
         language: system
-        types: [rust]
         pass_filenames: false
+        types: [rust]
+
+      - id: cargo-audit
+        name: cargo audit
+        entry: cargo audit
+        language: system
+        pass_filenames: false
+        files: ^Cargo\.(toml|lock)$
