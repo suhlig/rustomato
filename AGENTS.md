@@ -87,7 +87,7 @@ SQLite via `rusqlite`. Location defaults to `$RUSTOMATO_ROOT/data.db`, or overri
 
 ### Migrations
 
-Named `V1__...` through `V7__...` in `migrations/`. Applied automatically on startup in order. Each runs in a transaction and is recorded in the `_migrations` table. Foreign keys are temporarily disabled during migration (to allow V6's table rebuild), then re-enabled.
+Named `V1__...` through `V8__...` in `migrations/`. Applied automatically on startup in order. Each runs in a transaction and is recorded in the `_migrations` table. Foreign keys are temporarily disabled during migration (to allow V6's table rebuild), then re-enabled.
 
 ### Repository pattern
 

@@ -7,8 +7,6 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
 
@@ -34,7 +32,7 @@ pub struct Scheduler {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum SchedulingError {
-    ExecutionError,
+    ExecutionError(String),
     AlreadyRunning(u32),
     HookRejected,
     NoActiveSchedulable,
@@ -46,7 +44,7 @@ pub enum SchedulingError {
 impl fmt::Display for SchedulingError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SchedulingError::ExecutionError => write!(f, "cannot execute schedulable"),
+            SchedulingError::ExecutionError(msg) => write!(f, "{}", msg),
             SchedulingError::AlreadyRunning(pid) => {
                 write!(
                     f,
@@ -182,9 +180,8 @@ impl Scheduler {
     /// tries the active pomodoro first (`0`), then falls back to
     /// the most recent pomodoro (`-1`).
     pub fn interrupt(&self, kind: InterruptionKind) -> Result<Schedulable, SchedulingError> {
-        let target = self
-            .resolve_target("0", Some(Kind::Pomodoro))
-            .or_else(|_| self.resolve_target("-1", Some(Kind::Pomodoro)))?;
+        let target = resolve_target(&self.repo, "0", Some(Kind::Pomodoro))
+            .or_else(|_| resolve_target(&self.repo, "-1", Some(Kind::Pomodoro)))?;
 
         self.interrupt_inner(kind, &target)
     }
@@ -195,7 +192,7 @@ impl Scheduler {
         kind: InterruptionKind,
         raw_target: &str,
     ) -> Result<Schedulable, SchedulingError> {
-        let target = self.resolve_target(raw_target, Some(Kind::Pomodoro))?;
+        let target = resolve_target(&self.repo, raw_target, Some(Kind::Pomodoro))?;
 
         if target.kind != Kind::Pomodoro {
             return Err(SchedulingError::CannotResolveTarget(format!(
@@ -207,24 +204,45 @@ impl Scheduler {
         self.interrupt_inner(kind, &target)
     }
 
+    /// Cancel the given pomodoro: clears `finished_at`, sets `cancelled_at`,
+    /// runs the before/after-cancel hooks and persists.
+    fn cancel_pomodoro(&self, schedulable: &mut Schedulable) -> Result<(), SchedulingError> {
+        self.run_hook(HookEvent::BeforeCancelPomodoro, schedulable)?;
+        schedulable.cancelled_at = crate::now();
+        schedulable.finished_at = 0;
+        self.repo.save(schedulable).map_err(map_exec_err)?;
+        self.run_hook_after(HookEvent::AfterCancelPomodoro, schedulable);
+        Ok(())
+    }
+
+    /// Finish the given schedulable: clears `cancelled_at`, sets `finished_at`,
+    /// runs the before/after-finish hooks and persists.
+    fn finish(&self, schedulable: &mut Schedulable) -> Result<(), SchedulingError> {
+        let event = match schedulable.kind {
+            Kind::Pomodoro => HookEvent::BeforeFinishPomodoro,
+            Kind::Break => HookEvent::BeforeFinishBreak,
+        };
+        self.run_hook(event, schedulable)?;
+
+        schedulable.finished_at = crate::now();
+        schedulable.cancelled_at = 0;
+        self.repo.save(schedulable).map_err(map_exec_err)?;
+
+        let after_event = match schedulable.kind {
+            Kind::Pomodoro => HookEvent::AfterFinishPomodoro,
+            Kind::Break => HookEvent::AfterFinishBreak,
+        };
+        self.run_hook_after(after_event, schedulable);
+        Ok(())
+    }
+
     /// Close out a schedulable — cancel pomodoro, finish break.
     /// Runs before/after hooks and persists.
     fn close_out(&self, schedulable: &mut Schedulable) -> Result<(), SchedulingError> {
         match schedulable.kind {
-            Kind::Pomodoro => {
-                self.run_hook(HookEvent::BeforeCancelPomodoro, schedulable)?;
-                schedulable.cancelled_at = crate::now();
-                self.repo.save(schedulable).map_err(map_exec_err)?;
-                self.run_hook_after(HookEvent::AfterCancelPomodoro, schedulable);
-            }
-            Kind::Break => {
-                self.run_hook(HookEvent::BeforeFinishBreak, schedulable)?;
-                schedulable.finished_at = crate::now();
-                self.repo.save(schedulable).map_err(map_exec_err)?;
-                self.run_hook_after(HookEvent::AfterFinishBreak, schedulable);
-            }
+            Kind::Pomodoro => self.cancel_pomodoro(schedulable),
+            Kind::Break => self.finish(schedulable),
         }
-        Ok(())
     }
 
     /// Cancel the currently active schedulable.
@@ -246,7 +264,7 @@ impl Scheduler {
     /// Returns an error if the target is already in the terminal state
     /// (pomodoro already cancelled, break already finished).
     pub fn cancel_target(&self, raw_target: &str) -> Result<Schedulable, SchedulingError> {
-        let mut target = self.resolve_target(raw_target, None)?;
+        let mut target = resolve_target(&self.repo, raw_target, None)?;
 
         match target.kind {
             Kind::Pomodoro => {
@@ -255,11 +273,7 @@ impl Scheduler {
                         "pomodoro is already cancelled".to_string(),
                     ));
                 }
-                self.run_hook(HookEvent::BeforeCancelPomodoro, &target)?;
-                target.cancelled_at = crate::now();
-                target.finished_at = 0;
-                self.repo.save(&target).map_err(map_exec_err)?;
-                self.run_hook_after(HookEvent::AfterCancelPomodoro, &target);
+                self.cancel_pomodoro(&mut target)?;
                 Ok(target)
             }
             Kind::Break => {
@@ -268,11 +282,7 @@ impl Scheduler {
                         "break is already finished".to_string(),
                     ));
                 }
-                self.run_hook(HookEvent::BeforeFinishBreak, &target)?;
-                target.finished_at = crate::now();
-                target.cancelled_at = 0;
-                self.repo.save(&target).map_err(map_exec_err)?;
-                self.run_hook_after(HookEvent::AfterFinishBreak, &target);
+                self.finish(&mut target)?;
                 Ok(target)
             }
         }
@@ -286,7 +296,7 @@ impl Scheduler {
     /// Returns an error if the target is currently active (use cancel + delete
     /// instead, or wait for it to finish).
     pub fn delete_target(&self, raw_target: &str) -> Result<Schedulable, SchedulingError> {
-        let target = self.resolve_target(raw_target, None)?;
+        let target = resolve_target(&self.repo, raw_target, None)?;
 
         // Disallow deleting the currently active entry
         if matches!(target.status(), Status::Active) {
@@ -371,69 +381,11 @@ impl Scheduler {
         raw_target: &str,
         kind: Option<Kind>,
     ) -> Result<Annotation, SchedulingError> {
-        let target = self.resolve_target(raw_target, kind)?;
+        let target = resolve_target(&self.repo, raw_target, kind)?;
         self.save_annotation_for(&target, text)
     }
 
-    /// Resolve a target string to a Schedulable.
-    ///
-    /// - `"0"` → entry with a PID (active or stale). Error if none.
-    /// - `"-N"` (1..=9) → Nth most recently started, optionally filtered by `kind`.
-    /// - Otherwise tries HH:MM, RFC 3339, then UUID prefix (unchanged).
-    pub fn resolve_target(
-        &self,
-        raw: &str,
-        kind: Option<Kind>,
-    ) -> Result<Schedulable, SchedulingError> {
-        // 0 → entry with a PID (active or stale)
-        if raw == "0" {
-            let active = self
-                .repo
-                .active()
-                .map_err(map_exec_err)?
-                .ok_or(SchedulingError::NoActiveSchedulable)?;
-            if let Some(k) = kind
-                && active.kind != k
-            {
-                return Err(SchedulingError::CannotResolveTarget(format!(
-                    "active entry is a {}, not {}",
-                    active.kind, k
-                )));
-            }
-            return Ok(active);
-        }
-
-        // -N (1..=9): Nth most recently started, optionally filtered by kind.
-        // Excludes the active entry (which has its own target `0`), so that
-        // `-1` always means "the one before the currently running one".
-        if let Some(n) = parse_negative_index(raw) {
-            let exclude = self.repo.active().ok().flatten().map(|s| s.uuid);
-            return self
-                .repo
-                .nth_most_recently_started(n, kind, exclude)
-                .map_err(map_exec_err)?
-                .ok_or_else(|| {
-                    SchedulingError::CannotResolveTarget(format!("no entry at position -{}", n))
-                });
-        }
-
-        // Timestamp (HH:MM, RFC 3339, ISO 8601, or Unix timestamp)
-        if let Ok(ts) = super::parse_timestamp(raw)
-            && let Some(s) = self.repo.find_by_timestamp(ts).map_err(map_exec_err)?
-        {
-            return Ok(s);
-        }
-
-        // UUID prefix (abbreviated or full)
-        if let Ok(s) = self.repo.find_by_uuid_prefix(raw) {
-            return Ok(s);
-        }
-
-        Err(SchedulingError::CannotResolveTarget(format!(
-            "cannot resolve '{}' to a pomodoro or break; try a UUID prefix, -1..-9, or a timestamp",
-            raw
-        )))
-    }
+    // ── Target resolution ──────────────────────────────────
 
     /// Save an annotation for the given target, running before/after hooks.
     fn save_annotation_for(
@@ -505,7 +457,7 @@ impl Scheduler {
                 PersistenceError::AlreadyRunning(pid) => {
                     return Err(SchedulingError::AlreadyRunning(pid));
                 }
-                _ => return Err(SchedulingError::ExecutionError),
+                other => return Err(map_exec_err(other)),
             },
         };
 
@@ -522,53 +474,80 @@ impl Scheduler {
         }
 
         // --- wait for timer or Ctrl-C ---
-        let cancelled = match waiter(
+        let cancelled = waiter(
             schedulable.started_at,
             schedulable.duration,
             schedulable.kind,
-        )
-        .recv()
-        {
-            Ok(cancelled) => cancelled,
-            Err(_) => return Err(SchedulingError::ExecutionError),
-        };
+        );
 
-        match schedulable.kind {
-            Kind::Pomodoro if cancelled => {
-                // Ctrl-C during a pomodoro → cancel
-                self.run_hook(HookEvent::BeforeCancelPomodoro, &schedulable)?;
-
-                schedulable.cancelled_at = crate::now();
-                self.repo.save(&schedulable).map_err(map_exec_err)?;
-
-                self.run_hook_after(HookEvent::AfterCancelPomodoro, &schedulable);
-
-                Ok(schedulable)
-            }
-            Kind::Pomodoro => {
-                // Timer expired → finish
-                self.run_hook(HookEvent::BeforeFinishPomodoro, &schedulable)?;
-
-                schedulable.finished_at = crate::now();
-                self.repo.save(&schedulable).map_err(map_exec_err)?;
-
-                self.run_hook_after(HookEvent::AfterFinishPomodoro, &schedulable);
-
-                Ok(schedulable)
-            }
-            Kind::Break => {
-                // Both timer expiry and Ctrl-C during a break → finish
-                self.run_hook(HookEvent::BeforeFinishBreak, &schedulable)?;
-
-                schedulable.finished_at = crate::now();
-                self.repo.save(&schedulable).map_err(map_exec_err)?;
-
-                self.run_hook_after(HookEvent::AfterFinishBreak, &schedulable);
-
-                Ok(schedulable)
-            }
+        if schedulable.kind == Kind::Pomodoro && cancelled {
+            // Ctrl-C during a pomodoro → cancel
+            self.close_out(&mut schedulable)?;
+        } else {
+            // Timer expired → finish (Ctrl-C during a break finishes it too)
+            self.finish(&mut schedulable)?;
         }
+
+        Ok(schedulable)
     }
+}
+
+/// Resolve a target string to a Schedulable.
+///
+/// - `"0"` → entry with a PID (active or stale). Error if none.
+/// - `"-N"` (1..=9) → Nth most recently started, optionally filtered by `kind`.
+/// - Otherwise tries a timestamp (HH:MM, RFC 3339, …), then a UUID prefix.
+pub fn resolve_target(
+    repo: &Repository,
+    raw: &str,
+    kind: Option<Kind>,
+) -> Result<Schedulable, SchedulingError> {
+    // 0 → entry with a PID (active or stale)
+    if raw == "0" {
+        let active = repo
+            .active()
+            .map_err(map_exec_err)?
+            .ok_or(SchedulingError::NoActiveSchedulable)?;
+        if let Some(k) = kind
+            && active.kind != k
+        {
+            return Err(SchedulingError::CannotResolveTarget(format!(
+                "active entry is a {}, not {}",
+                active.kind, k
+            )));
+        }
+        return Ok(active);
+    }
+
+    // -N (1..=9): Nth most recently started, optionally filtered by kind.
+    // Excludes the active entry (which has its own target `0`), so that
+    // `-1` always means "the one before the currently running one".
+    if let Some(n) = parse_negative_index(raw) {
+        let exclude = repo.active().ok().flatten().map(|s| s.uuid);
+        return repo
+            .nth_most_recently_started(n, kind, exclude)
+            .map_err(map_exec_err)?
+            .ok_or_else(|| {
+                SchedulingError::CannotResolveTarget(format!("no entry at position -{}", n))
+            });
+    }
+
+    // Timestamp (HH:MM, RFC 3339, ISO 8601, or Unix timestamp)
+    if let Ok(ts) = super::parse_timestamp(raw)
+        && let Some(s) = repo.find_by_timestamp(ts).map_err(map_exec_err)?
+    {
+        return Ok(s);
+    }
+
+    // UUID prefix (abbreviated or full)
+    if let Ok(s) = repo.find_by_uuid_prefix(raw) {
+        return Ok(s);
+    }
+
+    Err(SchedulingError::CannotResolveTarget(format!(
+        "cannot resolve '{}' to a pomodoro or break; try a UUID prefix, -1..-9, or a timestamp",
+        raw
+    )))
 }
 
 /// Hides the terminal cursor while alive; restores it on drop.
@@ -593,9 +572,8 @@ impl Drop for CursorGuard {
     }
 }
 
-fn waiter(started_at: i64, duration: i64, kind: Kind) -> Receiver<bool> {
+fn waiter(started_at: i64, duration: i64, kind: Kind) -> bool {
     init_ctrlc_handler();
-    let (result_tx, result_rx) = channel::<bool>();
 
     // Show the progress bar only when attached to a terminal (stderr)
     let pb = std::io::stderr().is_terminal().then(|| {
@@ -615,56 +593,50 @@ fn waiter(started_at: i64, duration: i64, kind: Kind) -> Receiver<bool> {
 
     let total_secs = duration * 60;
 
-    thread::spawn({
-        move || {
-            let _cursor = CursorGuard::hide();
+    thread::spawn(move || {
+        let _cursor = CursorGuard::hide();
 
-            loop {
-                let elapsed_secs = (crate::now() - started_at).max(0);
-                if elapsed_secs >= total_secs {
-                    if let Some(ref pb) = pb {
-                        pb.finish_and_clear();
-                    }
-                    let _ = result_tx.send(false);
-                    return;
-                }
-
-                let remaining_secs = total_secs - elapsed_secs;
-                let em = elapsed_secs / 60;
-                let es = elapsed_secs % 60;
-                let rm = remaining_secs / 60;
-                let rs = remaining_secs % 60;
-
+        loop {
+            let elapsed_secs = (crate::now() - started_at).max(0);
+            if elapsed_secs >= total_secs {
                 if let Some(ref pb) = pb {
-                    pb.set_message(format!(
-                        "{} {:02}:{:02} / {:02}:{:02}",
-                        label, em, es, rm, rs,
-                    ));
-                    pb.set_position(elapsed_secs as u64);
+                    pb.finish_and_clear();
                 }
-
-                if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
-                    if let Some(ref pb) = pb {
-                        pb.finish_and_clear();
-                    }
-                    let _ = result_tx.send(true);
-                    return;
-                }
-
-                thread::sleep(Duration::from_millis(25));
+                return false;
             }
+
+            let remaining_secs = total_secs - elapsed_secs;
+            let em = elapsed_secs / 60;
+            let es = elapsed_secs % 60;
+            let rm = remaining_secs / 60;
+            let rs = remaining_secs % 60;
+
+            if let Some(ref pb) = pb {
+                pb.set_message(format!(
+                    "{} {:02}:{:02} / {:02}:{:02}",
+                    label, em, es, rm, rs,
+                ));
+                pb.set_position(elapsed_secs as u64);
+            }
+
+            if CTRLC_PRESSED.swap(false, Ordering::SeqCst) {
+                if let Some(ref pb) = pb {
+                    pb.finish_and_clear();
+                }
+                return true;
+            }
+
+            thread::sleep(Duration::from_millis(25));
         }
     })
     .join()
-    .unwrap();
-    result_rx
+    .expect("waiter thread panicked")
 }
 
-/// Convert a `PersistenceError` to `SchedulingError::ExecutionError`
-/// after printing the original error to stderr.
+/// Convert a `PersistenceError` to `SchedulingError::ExecutionError`,
+/// carrying the original message so it can be reported exactly once.
 fn map_exec_err(e: PersistenceError) -> SchedulingError {
-    eprintln!("Error: {}.", e);
-    SchedulingError::ExecutionError
+    SchedulingError::ExecutionError(e.to_string())
 }
 
 /// Parse `-N` where N is 1..=9 and return `Some(N)`, or `None`.

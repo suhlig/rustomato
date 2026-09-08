@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 // ── Data structures ───────────────────────────────────────────
 
 #[derive(Debug, Default)]
-#[allow(dead_code)]
 struct DayStats {
     date: NaiveDate,
     pomodori_completed: usize,
@@ -14,8 +13,6 @@ struct DayStats {
     breaks_taken: usize,
     breaks_cancelled: usize,
     interruptions: i64,
-    internal_interruptions: usize,
-    external_interruptions: usize,
 }
 
 #[derive(Debug, Default)]
@@ -256,7 +253,6 @@ fn compute_aggregate(entries: &[Schedulable], interrupts: &[InterruptLog]) -> Ag
 
 fn compute_day_stats(
     entries: &[Schedulable],
-    interrupts: &[InterruptLog],
     monday: NaiveDate,
     sunday: NaiveDate,
 ) -> Vec<DayStats> {
@@ -268,10 +264,6 @@ fn compute_day_stats(
         let day_entries: Vec<&Schedulable> = entries
             .iter()
             .filter(|e| e.started_at >= start && e.started_at <= end)
-            .collect();
-        let day_interrupts: Vec<&InterruptLog> = interrupts
-            .iter()
-            .filter(|l| l.created_at >= start && l.created_at <= end)
             .collect();
 
         let pomodori_completed = day_entries
@@ -295,14 +287,6 @@ fn compute_day_stats(
             .filter(|e| e.kind == Kind::Pomodoro)
             .map(|e| e.interruptions)
             .sum();
-        let internal_interruptions = day_interrupts
-            .iter()
-            .filter(|l| l.kind == InterruptionKind::Internal)
-            .count();
-        let external_interruptions = day_interrupts
-            .iter()
-            .filter(|l| l.kind == InterruptionKind::External)
-            .count();
 
         days.push(DayStats {
             date: current,
@@ -311,8 +295,6 @@ fn compute_day_stats(
             breaks_taken,
             breaks_cancelled,
             interruptions,
-            internal_interruptions,
-            external_interruptions,
         });
 
         current += Duration::days(1);
@@ -472,7 +454,7 @@ pub fn print_week_report(repo: &Repository, date: Option<String>) {
     let (this_entries, this_interrupts) = fetch_data(repo, this_start, this_end);
     let (prev_entries, prev_interrupts) = fetch_data(repo, prev_start, prev_end);
 
-    let day_stats = compute_day_stats(&this_entries, &this_interrupts, monday, sunday);
+    let day_stats = compute_day_stats(&this_entries, monday, sunday);
     let week = compute_aggregate(&this_entries, &this_interrupts);
     let prev_week = compute_aggregate(&prev_entries, &prev_interrupts);
 
@@ -1168,7 +1150,7 @@ pub fn print_last_report(repo: &Repository, date: Option<String>, days: u32) {
     let (pr_entries, pr_interrupts) = fetch_data(repo, pr_start, pr_end);
 
     // Day-by-day breakdown
-    let day_stats = compute_day_stats(&cur_entries, &cur_interrupts, start_date, end_date);
+    let day_stats = compute_day_stats(&cur_entries, start_date, end_date);
 
     // Aggregates
     let cur_agg = compute_aggregate(&cur_entries, &cur_interrupts);

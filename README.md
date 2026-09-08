@@ -159,7 +159,9 @@ arch=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/armv7l/armv7/') && cur
 
 ## Man page
 
-Rustomato ships a man page that you can view in several ways:
+Rustomato ships a man page that is **generated from the CLI definition** (via
+`clap_mangen`), so it always matches the actual commands and options. You can
+view it in several ways:
 
 **From the binary** (no installation needed):
 

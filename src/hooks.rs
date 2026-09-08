@@ -88,32 +88,33 @@ impl HookEvent {
         }
     }
 
-    /// All known hook filenames, used by `init` to create sample scripts.
-    pub const ALL: &'static [&'static str] = &[
-        "before-start-pomodoro",
-        "after-start-pomodoro",
-        "before-finish-pomodoro",
-        "after-finish-pomodoro",
-        "before-cancel-pomodoro",
-        "after-cancel-pomodoro",
-        "before-interrupt-pomodoro",
-        "after-interrupt-pomodoro",
-        "before-log-pomodoro",
-        "after-log-pomodoro",
-        "before-annotate-pomodoro",
-        "after-annotate-pomodoro",
-        "before-annotate-break",
-        "after-annotate-break",
-        "before-start-break",
-        "after-start-break",
-        "before-finish-break",
-        "after-finish-break",
-        "before-log-break",
-        "after-log-break",
-        "before-delete-pomodoro",
-        "after-delete-pomodoro",
-        "before-delete-break",
-        "after-delete-break",
+    /// All hook events, used by `init` to create sample scripts.
+    /// File names come from [`filename`](Self::filename).
+    pub const ALL: [HookEvent; 24] = [
+        HookEvent::BeforeStartPomodoro,
+        HookEvent::AfterStartPomodoro,
+        HookEvent::BeforeFinishPomodoro,
+        HookEvent::AfterFinishPomodoro,
+        HookEvent::BeforeCancelPomodoro,
+        HookEvent::AfterCancelPomodoro,
+        HookEvent::BeforeInterruptPomodoro,
+        HookEvent::AfterInterruptPomodoro,
+        HookEvent::BeforeLogPomodoro,
+        HookEvent::AfterLogPomodoro,
+        HookEvent::BeforeAnnotatePomodoro,
+        HookEvent::AfterAnnotatePomodoro,
+        HookEvent::BeforeAnnotateBreak,
+        HookEvent::AfterAnnotateBreak,
+        HookEvent::BeforeStartBreak,
+        HookEvent::AfterStartBreak,
+        HookEvent::BeforeFinishBreak,
+        HookEvent::AfterFinishBreak,
+        HookEvent::BeforeLogBreak,
+        HookEvent::AfterLogBreak,
+        HookEvent::BeforeDeletePomodoro,
+        HookEvent::AfterDeletePomodoro,
+        HookEvent::BeforeDeleteBreak,
+        HookEvent::AfterDeleteBreak,
     ];
 }
 
@@ -225,7 +226,7 @@ pub fn run_hook(event: HookEvent, context: &HookContext, no_hooks: bool) -> Resu
     if context.verbose {
         eprintln!("  Running hook {}...", event.filename());
     } else {
-        println!("\u{2502} [hook:{}]", event.filename());
+        eprintln!("\u{2502} [hook:{}]", event.filename());
     }
 
     execute_hook(&hook_path, event, context, hook_timeout())
@@ -313,7 +314,8 @@ pub fn init(root: &Path) -> std::io::Result<()> {
     let hooks_dir = root.join("hooks");
     std::fs::create_dir_all(&hooks_dir)?;
 
-    for hook_name in HookEvent::ALL {
+    for event in HookEvent::ALL {
+        let hook_name = event.filename();
         let hook_path = hooks_dir.join(hook_name);
         if !hook_path.exists() {
             let content = sample_hook_content(hook_name);

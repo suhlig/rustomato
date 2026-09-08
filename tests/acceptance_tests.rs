@@ -48,7 +48,8 @@ mod acceptance_tests {
         assert!(dir.path().join("hooks").is_dir());
 
         // All sample hooks are present and not executable by default
-        for name in rustomato::hooks::HookEvent::ALL {
+        for event in rustomato::hooks::HookEvent::ALL {
+            let name = event.filename();
             let path = dir.path().join("hooks").join(name);
             assert!(path.is_file(), "missing hook: {}", name);
 
@@ -253,8 +254,8 @@ mod acceptance_tests {
 
         // Make hooks executable so they actually run
         use std::os::unix::fs::PermissionsExt;
-        for name in rustomato::hooks::HookEvent::ALL {
-            let path = dir.path().join("hooks").join(name);
+        for event in rustomato::hooks::HookEvent::ALL {
+            let path = dir.path().join("hooks").join(event.filename());
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
 
@@ -291,6 +292,7 @@ mod acceptance_tests {
     fn interrupt_invalid_kind_fails() {
         let dir = tempdir().unwrap();
 
+        // clap rejects the value before any command runs
         rustomato()
             .env("RUSTOMATO_ROOT", dir.path())
             .arg("pomodoro")
@@ -299,8 +301,8 @@ mod acceptance_tests {
             .arg("invalid")
             .assert()
             .failure()
-            .code(predicate::eq(1))
-            .stderr(predicate::str::contains("unknown interruption kind"));
+            .code(predicate::eq(2))
+            .stderr(predicate::str::contains("invalid value 'invalid'"));
     }
 
     #[test]
@@ -443,9 +445,8 @@ mod acceptance_tests {
             .arg("-1")
             .assert()
             .failure()
-            .stderr(predicate::str::contains(
-                "cannot use both --target and a positional index",
-            ));
+            .code(predicate::eq(2))
+            .stderr(predicate::str::contains("cannot be used with"));
     }
 
     // --- interrupt with --target -------------------------------------------
@@ -1077,9 +1078,8 @@ mod acceptance_tests {
             .arg("-1")
             .assert()
             .failure()
-            .stderr(predicate::str::contains(
-                "cannot use both --target and a positional index",
-            ));
+            .code(predicate::eq(2))
+            .stderr(predicate::str::contains("cannot be used with"));
     }
 
     // --- log ---

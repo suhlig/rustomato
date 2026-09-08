@@ -4,7 +4,6 @@ use rusqlite::Error::QueryReturnedNoRows;
 use rusqlite::OpenFlags;
 use rusqlite::params;
 use std::fmt;
-use url::Url;
 use uuid::Uuid;
 
 pub struct Repository {
@@ -56,6 +55,18 @@ fn update_err(e: rusqlite::Error) -> PersistenceError {
 /// Shorthand for `PersistenceError::CannotDelete(e.to_string())`.
 fn delete_err(e: rusqlite::Error) -> PersistenceError {
     PersistenceError::CannotDelete(e.to_string())
+}
+
+/// Prepare a query, run it, and collect all rows via `mapper`.
+fn query_rows<T>(
+    db: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+    mapper: for<'r> fn(&rusqlite::Row<'r>) -> rusqlite::Result<T>,
+) -> Result<Vec<T>, PersistenceError> {
+    let mut stmt = db.prepare(sql).map_err(find_err)?;
+    let rows = stmt.query_map(params, mapper).map_err(find_err)?;
+    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(find_err)
 }
 
 // ── Row mappers ──────────────────────────────────────────────────
@@ -139,10 +150,6 @@ impl Repository {
         db.execute_batch("PRAGMA foreign_keys = ON;")
             .expect("enabling foreign key enforcement");
         Self { db }
-    }
-
-    pub fn from_url(location: &Url) -> Self {
-        Self::new(location.as_str())
     }
 
     pub fn active(&self) -> Result<Option<Schedulable>, PersistenceError> {
@@ -248,22 +255,13 @@ impl Repository {
     ) -> Result<Vec<Annotation>, PersistenceError> {
         let uuid_s = schedulable_uuid.to_string();
 
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, schedulable_uuid, body, created_at FROM annotations WHERE schedulable_uuid=?1 ORDER BY created_at ASC",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![uuid_s], row_to_annotation)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+        query_rows(
+            &self.db,
+            "SELECT uuid, schedulable_uuid, body, created_at FROM annotations \
+             WHERE schedulable_uuid=?1 ORDER BY created_at ASC",
+            params![uuid_s],
+            row_to_annotation,
+        )
     }
 
     /// Find the most recently finished pomodoro across all time.
@@ -303,23 +301,17 @@ impl Repository {
     /// Find a schedulable by abbreviated UUID prefix.
     /// Returns an error if the prefix matches zero or more than one row.
     pub fn find_by_uuid_prefix(&self, prefix: &str) -> Result<Schedulable, PersistenceError> {
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
-                 FROM schedulables \
-                 WHERE uuid LIKE ?1",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
         // The oldest UUID prefixes in the DB may be shorter than 6 chars for very old entries,
         // so we match the prefix followed by '%'
-        let pattern = format!("{}%%", prefix);
-        let rows: Vec<Schedulable> = stmt
-            .query_map(params![pattern], row_to_schedulable)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?
-            .filter_map(|r| r.ok())
-            .collect();
+        let pattern = format!("{}%", prefix);
+        let rows = query_rows(
+            &self.db,
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+             FROM schedulables \
+             WHERE uuid LIKE ?1",
+            params![pattern],
+            row_to_schedulable,
+        )?;
 
         match rows.len() {
             0 => Err(PersistenceError::CannotFind(format!(
@@ -450,25 +442,15 @@ impl Repository {
     ) -> Result<Vec<InterruptLog>, PersistenceError> {
         let uuid_s = schedulable_uuid.to_string();
 
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, schedulable_uuid, kind, created_at \
+        query_rows(
+            &self.db,
+            "SELECT uuid, schedulable_uuid, kind, created_at \
              FROM interrupt_log \
              WHERE schedulable_uuid=?1 \
              ORDER BY created_at ASC",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![uuid_s], row_to_interrupt_log)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+            params![uuid_s],
+            row_to_interrupt_log,
+        )
     }
 
     /// Fetch interrupt logs within a time range (inclusive), ordered by created_at.
@@ -477,75 +459,45 @@ impl Repository {
         start: i64,
         end: i64,
     ) -> Result<Vec<InterruptLog>, PersistenceError> {
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, schedulable_uuid, kind, created_at \
+        query_rows(
+            &self.db,
+            "SELECT uuid, schedulable_uuid, kind, created_at \
              FROM interrupt_log \
              WHERE created_at >= ?1 AND created_at <= ?2 \
              ORDER BY created_at ASC",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![start, end], row_to_interrupt_log)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+            params![start, end],
+            row_to_interrupt_log,
+        )
     }
 
-    /// Fetch all schedulables within a time range (inclusive), ordered by started_at.
+    /// Fetch all annotations within a time range (inclusive), ordered by created_at.
     pub fn annotations_between(
         &self,
         start: i64,
         end: i64,
     ) -> Result<Vec<Annotation>, PersistenceError> {
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, schedulable_uuid, body, created_at \
+        query_rows(
+            &self.db,
+            "SELECT uuid, schedulable_uuid, body, created_at \
              FROM annotations \
              WHERE created_at >= ?1 AND created_at <= ?2 \
              ORDER BY created_at ASC",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![start, end], row_to_annotation)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+            params![start, end],
+            row_to_annotation,
+        )
     }
 
     /// Fetch the most recent `limit` entries, ordered by started_at descending.
     pub fn list(&self, limit: i64) -> Result<Vec<Schedulable>, PersistenceError> {
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+        query_rows(
+            &self.db,
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
              FROM schedulables \
              ORDER BY started_at DESC \
              LIMIT ?1",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![limit], row_to_schedulable)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+            params![limit],
+            row_to_schedulable,
+        )
     }
 
     pub fn entries_between(
@@ -553,25 +505,15 @@ impl Repository {
         start: i64,
         end: i64,
     ) -> Result<Vec<Schedulable>, PersistenceError> {
-        let mut stmt = self
-            .db
-            .prepare(
-                "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
+        query_rows(
+            &self.db,
+            "SELECT uuid, kind, pid, duration, started_at, finished_at, cancelled_at, interruptions \
              FROM schedulables \
              WHERE started_at >= ?1 AND started_at <= ?2 \
              ORDER BY started_at ASC",
-            )
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let rows = stmt
-            .query_map(params![start, end], row_to_schedulable)
-            .map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row.map_err(|e| PersistenceError::CannotFind(format!("{}", e)))?);
-        }
-        Ok(result)
+            params![start, end],
+            row_to_schedulable,
+        )
     }
 
     /// Count the number of finished pomodori since the last long break (or since midnight today,

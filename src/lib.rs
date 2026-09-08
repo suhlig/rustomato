@@ -63,7 +63,7 @@ impl fmt::Display for SqlUuid {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum InterruptionKind {
     Internal,
     External,
@@ -75,6 +75,12 @@ impl InterruptionKind {
             InterruptionKind::Internal => "internal",
             InterruptionKind::External => "external",
         }
+    }
+}
+
+impl fmt::Display for InterruptionKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 
