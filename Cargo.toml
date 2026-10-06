@@ -19,7 +19,7 @@ indicatif = "0.18"
 rusqlite = { version = "~0.40.0", features = ["bundled"] }
 tempfile = "3.27.0"
 url = "~2.5.8"
-uuid = { version = "~1.26.0", features = ["v4"] }
+uuid = { version = "~1.27.0", features = ["v4"] }
 chrono = "0.4"
 
 [dev-dependencies]
