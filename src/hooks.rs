@@ -1,12 +1,24 @@
 use super::{Kind, Schedulable, SqlUuid};
 use std::fmt;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// How often to retry spawning a hook that the kernel reports as
+/// `ETXTBSY`, and how long to wait between attempts.
+///
+/// In a multi-threaded process (rustomato runs a timer and a Ctrl-C thread)
+/// a concurrent `fork` can transiently duplicate a write handle to a freshly
+/// written hook script into the child, so `exec` fails with `ETXTBSY` even
+/// though the spawning thread has already closed its own handle. Retrying
+/// rides out that race.
+const SPAWN_RETRIES: u32 = 20;
+const SPAWN_RETRY_DELAY: Duration = Duration::from_millis(2);
 
 #[cfg(test)]
 thread_local! {
@@ -232,6 +244,26 @@ pub fn run_hook(event: HookEvent, context: &HookContext, no_hooks: bool) -> Resu
     execute_hook(&hook_path, event, context, hook_timeout())
 }
 
+/// Spawn a command, retrying while the kernel reports `ETXTBSY`
+/// ("Text file busy"). See [`SPAWN_RETRIES`] for why this is needed.
+fn spawn_with_retry(cmd: &mut Command) -> io::Result<Child> {
+    let mut attempt = 0;
+    loop {
+        match cmd.spawn() {
+            Ok(child) => return Ok(child),
+            Err(e) if is_text_file_busy(&e) && attempt < SPAWN_RETRIES => {
+                attempt += 1;
+                std::thread::sleep(SPAWN_RETRY_DELAY);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+fn is_text_file_busy(err: &io::Error) -> bool {
+    err.raw_os_error() == Some(libc::ETXTBSY)
+}
+
 fn is_executable(path: &Path) -> bool {
     if let Ok(metadata) = path.metadata() {
         metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
@@ -273,7 +305,7 @@ fn execute_hook(
     // Pass the hook name as the first argument ($1).
     cmd.arg(event.filename());
 
-    let mut child = cmd.spawn().map_err(HookError::SpawnFailed)?;
+    let mut child = spawn_with_retry(&mut cmd).map_err(HookError::SpawnFailed)?;
 
     let start = Instant::now();
 
@@ -600,5 +632,24 @@ mod tests {
         TEST_HOOK_TIMEOUT.with(|t| *t.borrow_mut() = None);
 
         assert_matches!(result, Err(HookError::TimedOut(_)));
+    }
+
+    // --- ETXTBSY retry ------------------------------------------------------
+
+    #[test]
+    fn text_file_busy_is_retried() {
+        // A multi-threaded fork can transiently hand a write handle to a
+        // freshly written hook script to the spawned child, making `exec`
+        // fail with ETXTBSY. That error must be recognized so it is retried.
+        assert!(is_text_file_busy(&io::Error::from_raw_os_error(
+            libc::ETXTBSY
+        )));
+    }
+
+    #[test]
+    fn other_spawn_errors_are_not_retried() {
+        assert!(!is_text_file_busy(&io::Error::from_raw_os_error(
+            libc::ENOENT
+        )));
     }
 }
