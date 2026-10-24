@@ -1,41 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
-  ],
+  "extends": ["config:recommended"],
   "mode": "full",
   "internalChecksFilter": "strict",
   "rebaseWhen": "behind-base-branch",
-  "labels": [
-    "dependencies"
-  ],
+  "labels": ["dependencies"],
   "minimumReleaseAge": "3 days",
   "packageRules": [
     {
       "description": "Automatically merge minor and patch updates after CI passes",
-      "matchUpdateTypes": [
-        "minor",
-        "patch"
-      ],
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
       "platformAutomerge": true
     },
     {
       "description": "Create PRs for major updates but do not auto-merge",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false
-    },
-    {
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
+      "matchUpdateTypes": ["major"],
       "automerge": false,
-      "assignees": [
-        "suhlig"
-      ]
+      "assignees": ["suhlig"]
     }
   ]
 }
