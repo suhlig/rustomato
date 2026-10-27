@@ -16,7 +16,7 @@ ctrlc = "~3.5"
 dirs = "~7.0.0"
 libc = "0.2"
 indicatif = "0.18"
-rusqlite = { version = "~0.40.0", features = ["bundled"] }
+rusqlite = { version = "~0.41.0", features = ["bundled"] }
 tempfile = "3.27.0"
 url = "~2.5.8"
 uuid = { version = "~1.29.0", features = ["v4"] }
